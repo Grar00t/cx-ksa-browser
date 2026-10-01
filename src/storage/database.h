@@ -59,6 +59,10 @@ public:
   bool DeleteHistory(std::int64_t id);
   bool ClearHistory();
 
+  bool SetPermission(std::string_view capability, bool granted);
+  std::optional<bool> GetPermission(std::string_view capability) const;
+  bool RevokeAllPermissions();
+
   bool BeginTransaction();
   bool Commit();
   bool Rollback();

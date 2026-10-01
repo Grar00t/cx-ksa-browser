@@ -60,6 +60,19 @@ if(MSVC)
   target_compile_options(cx_storage PRIVATE /W4 /permissive- /EHsc)
 endif()
 
+add_library(cx_agent STATIC
+  src/agent/agent_core.cpp
+  src/agent/agent_core.h
+  src/agent/permissions.cpp
+  src/agent/permissions.h
+  src/agent/consent_dialog.cpp
+  src/agent/consent_dialog.h)
+target_include_directories(cx_agent PUBLIC src)
+target_link_libraries(cx_agent PUBLIC cx_storage user32)
+if(MSVC)
+  target_compile_options(cx_agent PRIVATE /W4 /permissive- /EHsc)
+endif()
+
 add_executable(cx WIN32
   src/main.cpp
   src/app_window.cpp
@@ -67,7 +80,7 @@ add_executable(cx WIN32
 target_include_directories(cx PRIVATE
   "${WEBVIEW2_ROOT}/build/native/include")
 target_link_libraries(cx PRIVATE
-  cx_storage
+  cx_agent
   "${WEBVIEW2_ROOT}/build/native/${WEBVIEW2_ARCH}/WebView2LoaderStatic.lib"
   user32 ole32 shell32 shlwapi version)
 target_compile_definitions(cx PRIVATE UNICODE _UNICODE)
@@ -91,8 +104,10 @@ add_library(GTest::gtest ALIAS gtest)
 add_library(GTest::gtest_main ALIAS gtest_main)
 
 enable_testing()
-add_executable(storage_tests tests/storage_test.cpp)
-target_link_libraries(storage_tests PRIVATE cx_storage GTest::gtest_main)
+add_executable(storage_tests
+  tests/storage_test.cpp
+  tests/agent_test.cpp)
+target_link_libraries(storage_tests PRIVATE cx_agent GTest::gtest_main)
 if(MSVC)
   target_compile_options(storage_tests PRIVATE /W4 /permissive- /EHsc)
 endif()

@@ -1,25 +1,43 @@
 # Project State
 
 ## Current Status
-Phase: P03 implemented on branch `prompt-P03`.
-The Windows shell now opens a local SQLite database before starting the UI.
+Phase: P04 implemented on branch `prompt-P04`.
+CX now has a deny-by-default local agent foundation with persisted consent,
+a fixed action allowlist, local-only agent logging, and UI revocation.
 
-## Storage
-Default path: `%APPDATA%\CX Build\data.db`.
-SQLite 3.53.4 amalgamation is vendored under `third_party/sqlite`.
-GoogleTest 1.18.0 is vendored under `third_party/googletest`.
+## Agent Lifecycle
+The agent is stopped when CX starts.
+`Agent > Start Agent...` requires explicit `agent.run` consent.
+A denied start leaves the lifecycle in `Stopped` state without crashing.
+`Agent > Stop Agent` stops a running agent.
 
-Schema migration v1 creates:
-- `settings`: local key/value settings.
-- `tabs`: ordered tab/session state.
-- `history`: local browsing history.
-- `schema_migrations`: applied migration versions.
+## Permissions
+SQLite migration v2 adds the `permissions` table.
+Missing permission rows are denied.
+A granted capability is reusable until the user revokes it.
+A denial is stored as `granted=0`.
+If consent cannot be persisted, the capability remains denied.
 
-## Transaction Safety
-SQLite is configured with WAL mode, `synchronous=FULL`, foreign keys enabled,
-a 5-second busy timeout, prepared statements for CRUD, transactional migrations,
-and explicit `BEGIN IMMEDIATE / COMMIT / ROLLBACK`.
-`Transaction` rolls back automatically if it leaves scope without commit.
+Capabilities:
+- `agent.run`
+- `browser.read_page`
+- `browser.navigate`
+- `tabs.manage`
+- `clipboard.write`
+- `native_messaging.connect`
+- `mcp.connect`
+
+Every allowlisted action maps to exactly one capability.
+Unknown actions are rejected before any permission prompt.
+`Agent > Revoke All Permissions...` stops the agent and writes all
+persisted grants back to denied after an explicit confirmation dialog.
+
+## Logging
+Agent logs are append-only local files at:
+`%APPDATA%\CX Build\logs\agent.log`
+
+The agent/logger code contains no HTTP, socket, telemetry, analytics,
+or upload path. Log writes use the local filesystem only.
 
 ## Build And Test
 `cmake -B build`
@@ -30,22 +48,27 @@ Or:
 `powershell -ExecutionPolicy Bypass -File scripts/build.ps1`
 
 ## Verified On 2026-10-01
-- PASS: CMake configure completed.
-- PASS: Release and Debug storage targets compile.
-- PASS: `build/Release/cx.exe` produced.
-- PASS: `ctest --output-on-failure` passes without requiring `-C`.
-- PASS: GoogleTest direct run: 8 tests, 8 passed.
-- PASS: database exists at `C:\Users\A\AppData\Roaming\CX Build\data.db`.
-- PASS: tables observed: `history`, `schema_migrations`, `settings`, `tabs`.
-- PASS: migration version observed: 1.
-- PASS: journal mode observed: WAL; synchronous setting observed: FULL (2).
-- PASS: 20 repeated storage-test runs showed 0 TCP connections and 0 UDP endpoints.
+- PASS: Release build produced `build/Release/cx.exe`.
+- PASS: `ctest --output-on-failure` passed.
+- PASS: GoogleTest direct run: 17 tests, 17 passed.
+- PASS: deny-by-default prevents agent start without consent.
+- PASS: separate allowlisted actions require separate consent.
+- PASS: unknown action is denied by the allowlist.
+- PASS: rejected permission leaves the process and agent stable.
+- PASS: migration version observed: 2.
+
+- PASS: actual `CX Agent Permission` dialog observed from the running app.
+- PASS: actual denial flow left `cx.exe` alive.
+- PASS: actual `Revoke CX Agent Permissions` UI observed.
+- PASS: after revoke, SQLite reported no granted permissions.
+- PASS: local log observed at the required AppData path.
+- PASS: 20 repeated agent-test runs showed 0 TCP connections and
+  0 UDP endpoints for the test process.
 
 ## Known Limitation
-The P03 storage layer itself performs no network I/O. The full `cx.exe` still
-inherits the P02 Evergreen WebView2 Runtime behavior previously observed to make
-Microsoft HTTPS connections during WebView startup. P03 does not claim that
-the full browser process is network-silent.
+P04 agent permissions and logs are local-only. The full `cx.exe` still
+inherits the P02 Evergreen WebView2 Runtime startup network behavior.
+That runtime traffic is separate from the P04 agent/logging subsystem.
 
 ## Next Prompt
-P04.
+P05.

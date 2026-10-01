@@ -1,4 +1,9 @@
 #include "app_window.h"
+
+#include "agent/agent_core.h"
+#include "agent/consent_dialog.h"
+#include "agent/permissions.h"
+
 #include <WebView2EnvironmentOptions.h>
 
 #include <cwchar>
@@ -7,8 +12,19 @@ using Microsoft::WRL::Callback;
 
 namespace {
 constexpr wchar_t kWindowClass[] = L"CXBuildWindowClass";
-constexpr wchar_t kWindowTitle[] = L"CX Build - P02";
+constexpr wchar_t kWindowTitle[] = L"CX Build - P04";
+constexpr WORD kAgentStart = 40001;
+constexpr WORD kAgentStop = 40002;
+constexpr WORD kAgentRevokeAll = 40003;
 }
+
+AppWindow::AppWindow(
+    cx::agent::AgentCore& agent,
+    cx::agent::PermissionManager& permissions,
+    cx::agent::ConsentDialog& consent_dialog)
+    : agent_(agent),
+      permissions_(permissions),
+      consent_dialog_(consent_dialog) {}
 
 int AppWindow::Run(HINSTANCE instance, int show_command) {
   const HRESULT com = OleInitialize(nullptr);
@@ -52,12 +68,86 @@ bool AppWindow::Create(HINSTANCE instance, int) {
   if (!hwnd_) {
     return false;
   }
+  CreateMenus();
   ShowWindow(hwnd_, SW_SHOWNORMAL);
   SetWindowPos(hwnd_, nullptr, 0, 0, 1024, 768,
                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
   UpdateWindow(hwnd_);
   InitializeWebView();
   return true;
+}
+
+void AppWindow::CreateMenus() {
+  HMENU menu_bar = CreateMenu();
+  HMENU agent_menu = CreatePopupMenu();
+  if (!menu_bar || !agent_menu) {
+    if (agent_menu) {
+      DestroyMenu(agent_menu);
+    }
+    if (menu_bar) {
+      DestroyMenu(menu_bar);
+    }
+    return;
+  }
+
+  AppendMenuW(agent_menu, MF_STRING, kAgentStart, L"Start Agent...");
+  AppendMenuW(agent_menu, MF_STRING, kAgentStop, L"Stop Agent");
+  AppendMenuW(agent_menu, MF_SEPARATOR, 0, nullptr);
+  AppendMenuW(
+      agent_menu, MF_STRING, kAgentRevokeAll,
+      L"Revoke All Permissions...");
+  AppendMenuW(
+      menu_bar, MF_POPUP,
+      reinterpret_cast<UINT_PTR>(agent_menu), L"Agent");
+  SetMenu(hwnd_, menu_bar);
+}
+
+void AppWindow::HandleCommand(WORD command) {
+  if (command == kAgentStart) {
+    if (agent_.Start(hwnd_)) {
+      MessageBoxW(
+          hwnd_, L"CX Agent is running.",
+          L"CX Agent", MB_OK | MB_ICONINFORMATION);
+    } else {
+      MessageBoxW(
+          hwnd_, L"CX Agent remains stopped.",
+          L"CX Agent", MB_OK | MB_ICONINFORMATION);
+    }
+    return;
+  }
+
+  if (command == kAgentStop) {
+    agent_.Stop();
+    MessageBoxW(
+        hwnd_, L"CX Agent is stopped.",
+        L"CX Agent", MB_OK | MB_ICONINFORMATION);
+    return;
+  }
+
+  if (command == kAgentRevokeAll) {
+    const auto granted = permissions_.Granted();
+    if (granted.empty()) {
+      MessageBoxW(
+          hwnd_, L"No agent permissions are currently granted.",
+          L"CX Agent Permissions", MB_OK | MB_ICONINFORMATION);
+      return;
+    }
+
+    if (!consent_dialog_.ConfirmRevokeAll(hwnd_, granted.size())) {
+      return;
+    }
+
+    agent_.Stop();
+    if (permissions_.RevokeAll()) {
+      MessageBoxW(
+          hwnd_, L"All agent permissions were revoked.",
+          L"CX Agent Permissions", MB_OK | MB_ICONINFORMATION);
+    } else {
+      MessageBoxW(
+          hwnd_, L"Permission revocation could not be saved.",
+          L"CX Agent Permissions", MB_OK | MB_ICONERROR);
+    }
+  }
 }
 
 void AppWindow::InitializeWebView() {
@@ -146,6 +236,10 @@ LRESULT CALLBACK AppWindow::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPAR
   }
   if (self && message == WM_SIZE) {
     self->ResizeWebView();
+    return 0;
+  }
+  if (self && message == WM_COMMAND) {
+    self->HandleCommand(LOWORD(wparam));
     return 0;
   }
   if (message == WM_DESTROY) {

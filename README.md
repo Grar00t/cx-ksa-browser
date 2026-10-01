@@ -11,7 +11,8 @@ It is not affiliated with Perplexity or Comet.
 - No telemetry, analytics, crash upload, remote update, or cloud sync by default.
 
 ## Status
-P03 local-first storage is implemented: native WebView2 shell, SQLite storage,
-migrations, CRUD, and GoogleTest coverage.
+P04 agent foundation is implemented: native WebView2 shell, local SQLite
+storage, deny-by-default agent permissions, fixed action allowlisting,
+local AppData logging, consent dialogs, UI revocation, and GoogleTest coverage.
 
 See `docs/STATE.md` for verified build/test state and known limitations.

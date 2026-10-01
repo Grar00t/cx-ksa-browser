@@ -382,6 +382,37 @@ bool Database::ClearHistory() {
   return Exec("DELETE FROM history;");
 }
 
+bool Database::SetPermission(std::string_view capability, bool granted) {
+  Statement statement(db_,
+      "INSERT INTO permissions(capability, granted) VALUES(?1, ?2) "
+      "ON CONFLICT(capability) DO UPDATE SET granted=excluded.granted, "
+      "updated_at=unixepoch();");
+  if (!statement.ok() ||
+      !BindText(statement.get(), 1, capability) ||
+      sqlite3_bind_int(statement.get(), 2, granted ? 1 : 0) != SQLITE_OK) {
+    return false;
+  }
+  return StepDone(statement.get());
+}
+
+std::optional<bool> Database::GetPermission(
+    std::string_view capability) const {
+  Statement statement(db_,
+      "SELECT granted FROM permissions WHERE capability=?1;");
+  if (!statement.ok() || !BindText(statement.get(), 1, capability)) {
+    return std::nullopt;
+  }
+
+  if (sqlite3_step(statement.get()) != SQLITE_ROW) {
+    return std::nullopt;
+  }
+  return sqlite3_column_int(statement.get(), 0) != 0;
+}
+
+bool Database::RevokeAllPermissions() {
+  return Exec("UPDATE permissions SET granted=0, updated_at=unixepoch();");
+}
+
 bool Database::BeginTransaction() {
   if (!db_ || in_transaction_) {
     return false;
