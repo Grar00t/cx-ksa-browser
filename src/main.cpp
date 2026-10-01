@@ -2,6 +2,10 @@
 #include "agent/consent_dialog.h"
 #include "agent/permissions.h"
 #include "app_window.h"
+#include "browser/bookmark_service.h"
+#include "browser/history_service.h"
+#include "browser/navigation_controller.h"
+#include "browser/tab_manager.h"
 #include "mcp/allowlist_dialog.h"
 #include "mcp/allowlist_manager.h"
 #include "mcp/mcp_client.h"
@@ -20,12 +24,23 @@ int WINAPI wWinMain(
     return 3;
   }
 
+  cx::browser::TabManager tabs(database);
+  if (!tabs.Restore()) {
+    MessageBoxW(
+        nullptr, L"Failed to restore local browser session.",
+        L"CX Build", MB_ICONERROR);
+    return 4;
+  }
+  cx::browser::HistoryService history(database);
+  cx::browser::BookmarkService bookmarks(database);
+  cx::browser::NavigationController navigation(tabs, history);
+
   cx::agent::LocalLogger agent_logger;
   if (!agent_logger.Open()) {
     MessageBoxW(
         nullptr, L"Failed to open local CX agent log.",
         L"CX Build", MB_ICONERROR);
-    return 4;
+    return 5;
   }
 
   const auto mcp_log_path =
@@ -36,7 +51,7 @@ int WINAPI wWinMain(
     MessageBoxW(
         nullptr, L"Failed to open local CX MCP log.",
         L"CX Build", MB_ICONERROR);
-    return 5;
+    return 6;
   }
 
   cx::agent::ConsentDialog consent_dialog;
@@ -49,11 +64,6 @@ int WINAPI wWinMain(
     mcp_logger.Log(
         "mcp_allowlist_load_failed",
         "fail-closed: no servers loaded");
-    MessageBoxW(
-        nullptr,
-        L"MCP allowlist is invalid. MCP starts fail-closed until "
-        L"you replace it from MCP > Allowed Servers.",
-        L"CX MCP", MB_OK | MB_ICONWARNING);
   }
 
   cx::mcp::RateLimiter mcp_rate_limiter(10);
@@ -63,6 +73,8 @@ int WINAPI wWinMain(
       mcp_allowlist, mcp_client);
 
   AppWindow app(
-      agent, permissions, consent_dialog, mcp_dialog, mcp_client);
+      agent, permissions, consent_dialog,
+      mcp_dialog, mcp_client,
+      tabs, navigation, history, bookmarks);
   return app.Run(instance, show_command);
 }

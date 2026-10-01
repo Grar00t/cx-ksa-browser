@@ -60,6 +60,26 @@ if(MSVC)
   target_compile_options(cx_storage PRIVATE /W4 /permissive- /EHsc)
 endif()
 
+add_library(cx_browser STATIC
+  src/browser/tab_manager.cpp
+  src/browser/tab_manager.h
+  src/browser/navigation_controller.cpp
+  src/browser/navigation_controller.h
+  src/browser/history_service.cpp
+  src/browser/history_service.h
+  src/browser/bookmark_service.cpp
+  src/browser/bookmark_service.h
+  src/browser/history_dialog.cpp
+  src/browser/history_dialog.h
+  src/browser/bookmarks_dialog.cpp
+  src/browser/bookmarks_dialog.h)
+target_include_directories(cx_browser PUBLIC src)
+target_compile_definitions(cx_browser PRIVATE UNICODE _UNICODE)
+target_link_libraries(cx_browser PUBLIC cx_storage user32)
+if(MSVC)
+  target_compile_options(cx_browser PRIVATE /W4 /permissive- /EHsc)
+endif()
+
 add_library(cx_agent STATIC
   src/agent/agent_core.cpp
   src/agent/agent_core.h
@@ -97,8 +117,9 @@ target_include_directories(cx PRIVATE
   "${WEBVIEW2_ROOT}/build/native/include")
 target_link_libraries(cx PRIVATE
   cx_mcp
+  cx_browser
   "${WEBVIEW2_ROOT}/build/native/${WEBVIEW2_ARCH}/WebView2LoaderStatic.lib"
-  user32 ole32 shell32 shlwapi version)
+  user32 ole32 shell32 shlwapi version comctl32)
 target_compile_definitions(cx PRIVATE UNICODE _UNICODE)
 if(MSVC)
   target_compile_options(cx PRIVATE /W4 /permissive- /EHsc)
@@ -129,12 +150,22 @@ set_target_properties(mcp_test_server PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_BINARY_DIR}/tests-bin"
   RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL "${CMAKE_BINARY_DIR}/tests-bin")
 
+add_executable(browser_crash_writer
+  tests/browser_crash_writer.cpp)
+target_link_libraries(browser_crash_writer PRIVATE cx_browser)
+set_target_properties(browser_crash_writer PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/tests-bin"
+  RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/tests-bin"
+  RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_BINARY_DIR}/tests-bin"
+  RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL "${CMAKE_BINARY_DIR}/tests-bin")
+
 add_executable(storage_tests
   tests/storage_test.cpp
   tests/agent_test.cpp
-  tests/mcp_test.cpp)
-target_link_libraries(storage_tests PRIVATE cx_mcp GTest::gtest_main)
-add_dependencies(storage_tests mcp_test_server)
+  tests/mcp_test.cpp
+  tests/browser_test.cpp)
+target_link_libraries(storage_tests PRIVATE cx_mcp cx_browser GTest::gtest_main)
+add_dependencies(storage_tests mcp_test_server browser_crash_writer)
 if(MSVC)
   target_compile_options(storage_tests PRIVATE /W4 /permissive- /EHsc)
 endif()

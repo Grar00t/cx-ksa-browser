@@ -1,72 +1,47 @@
 # Project State
 
 ## Current Status
-Phase: P05 implemented on branch `prompt-P05`.
-CX now has a deny-by-default local MCP stdio integration on top of the
-P04 agent permission model. MCP servers are local executables selected by
-the user and persisted in an explicit JSON allowlist.
+Phase: P06 implemented on branch `prompt-P06`.
+CX now has logical tabs over one WebView2 surface, immediate SQLite session
+persistence, local history search, local bookmarks, and browser navigation UI.
 
-## MCP Transport
-`McpClient` launches only an allowlisted absolute `.exe` path with
-`CreateProcessW`; there is no shell or PATH lookup.
-Transport is stdin/stdout using newline-delimited JSON frames.
-Messages are capped at 4 MiB and payload bodies are not written to logs.
-Removing an active server from the allowlist prevents further requests.
+## Browser
+The window provides a tab strip, address bar, Back, Forward, Reload, Go,
+Bookmark, New Tab, Close Tab, History, and Bookmarks.
+Tabs are lightweight logical tabs; switching navigates the shared WebView2
+surface to that tab's persisted URL.
 
-## Allowlist And User Action
-Runtime allowlist path:
-`%APPDATA%\CX Build\config\mcp_allowlist.json`
+## Persistence
+SQLite migration v3 adds `bookmarks`.
+Tab creation, close, activation, URL, and title changes are committed when
+they occur. The active tab ID is stored in `settings`, so restore does not
+depend on a clean application shutdown.
 
-Repository template:
-`config/mcp_allowlist.json`
+History is local in SQLite and searchable by URL or title.
+Bookmarks are local in SQLite and unique by URL.
 
-A missing config is created empty. Invalid JSON loads fail-closed.
-Unknown server IDs are rejected before MCP consent is requested.
-The UI is available at `MCP > Allowed Servers...` and lets the user
-add a local executable, remove it, connect, and disconnect.
-
-A server process is not spawned merely because it is allowlisted.
-Connection requires all of:
-1. an explicitly selected allowlisted server,
-2. a running agent,
-3. granted `mcp.connect` permission,
-4. an explicit Connect action from the MCP allowlist window.
-
-## Rate Limiting And Logging
-Each server has an independent fixed-window limiter of 10 requests per
-second. The limiter resets when a server starts or stops.
-
-MCP logs are append-only local files at:
-`%APPDATA%\CX Build\logs\mcp.log`
-
-Every request attempt logs server ID, byte count, and outcome. Request
-payloads are not logged.
-
-## Build And Test
-`cmake -B build`
-`cmake --build build --config Release`
-`ctest --test-dir build -C Release --output-on-failure`
-`build\tests-bin\storage_tests.exe`
-
-## Verified On 2026-10-01
+## Verification On 2026-10-01
 - PASS: Release build produced `build/Release/cx.exe`.
-- PASS: `ctest` passed.
-- PASS: direct GoogleTest run: 27 tests, 27 passed.
-- PASS: server outside the allowlist is rejected before MCP consent.
-- PASS: allowlisted server does not spawn before explicit `Start`.
-- PASS: stdio request/response round-trip works against a real child process.
-- PASS: the 11th request inside one second is rejected for that server.
-- PASS: rate-limit buckets are independent per server.
-- PASS: every request attempt is recorded in the local MCP log.
-- PASS: request JSON bodies are absent from the log.
-- PASS: removing a running server blocks another request and stops it.
-- PASS: malformed allowlist JSON fails closed.
-- PASS: UTF-8 BOM allowlist input loads.
+- PASS: CTest passed.
+- PASS: direct GoogleTest run: 36 tests, 36 passed.
+- PASS: 13 simultaneous logical tabs persisted and closed correctly.
+- PASS: crash helper exited with code 77 and the next process restored 3 tabs
+  plus the previously active tab.
+- PASS: measured maximum logical-tab creation time over 12 creates:
+  `2.9042 ms` (<100 ms).
+- PASS: 25 cycles of 12 create/close operations did not leak process handles
+  beyond the test tolerance.
+- PASS: local history search matches title and URL.
+- PASS: bookmark add/update/delete is local and persistent.
+- PASS: javascript-style explicit schemes are rejected by address parsing.
 
-## Known Limitation
-The MCP transport intentionally implements stdio only. Remote MCP
-transports are out of P05 scope. The WebView2 runtime behavior documented
-in P04 remains separate from the local MCP subsystem.
+## Privacy Boundary
+CX passes WebView2 flags disabling sync, component updates, and background
+networking and does not implement any application-level sync or telemetry.
+The browser must permit user-requested HTTP/HTTPS traffic for P06 navigation.
+The separate Evergreen WebView2 runtime is third-party runtime code; absence
+of all vendor-runtime telemetry is not claimed without independent runtime
+verification.
 
 ## Next Prompt
-P06.
+P07.

@@ -9,7 +9,7 @@ struct Migration {
   const char* sql;
 };
 
-inline constexpr std::array<Migration, 2> kMigrations{{
+inline constexpr std::array<Migration, 3> kMigrations{{
     {1, R"SQL(
 CREATE TABLE settings (
   key TEXT PRIMARY KEY NOT NULL,
@@ -44,6 +44,16 @@ CREATE TABLE permissions (
   granted INTEGER NOT NULL DEFAULT 0 CHECK (granted IN (0, 1)),
   updated_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
+)SQL"},
+    {3, R"SQL(
+CREATE TABLE bookmarks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  url TEXT NOT NULL UNIQUE,
+  title TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX bookmarks_created_at_idx
+  ON bookmarks(created_at DESC, id DESC);
 )SQL"},
 }};
 

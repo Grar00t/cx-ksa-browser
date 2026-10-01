@@ -48,7 +48,7 @@ TEST(StorageDefaultPath, CreatesDatabaseUnderAppData) {
   EXPECT_EQ(database.path(), expected);
   ASSERT_TRUE(database.Open());
   EXPECT_TRUE(std::filesystem::exists(expected));
-  EXPECT_EQ(database.SchemaVersion(), 2);
+  EXPECT_EQ(database.SchemaVersion(), 3);
 }
 
 TEST_F(StorageTest, SettingsCrudWorks) {
@@ -118,10 +118,10 @@ TEST_F(StorageTest, HistoryCrudWorks) {
 }
 
 TEST_F(StorageTest, MigrationsAreIdempotent) {
-  EXPECT_EQ(database_->SchemaVersion(), 2);
+  EXPECT_EQ(database_->SchemaVersion(), 3);
   database_->Close();
   ASSERT_TRUE(database_->Open());
-  EXPECT_EQ(database_->SchemaVersion(), 2);
+  EXPECT_EQ(database_->SchemaVersion(), 3);
 
   ASSERT_TRUE(database_->SetSetting("after-reopen", "ok"));
   EXPECT_EQ(*database_->GetSetting("after-reopen"), "ok");

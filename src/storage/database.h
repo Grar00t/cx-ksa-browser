@@ -26,6 +26,13 @@ struct HistoryEntry {
   std::int64_t visited_at = 0;
 };
 
+struct Bookmark {
+  std::int64_t id = 0;
+  std::string url;
+  std::string title;
+  std::int64_t created_at = 0;
+};
+
 class Database {
 public:
   explicit Database(std::filesystem::path path = DefaultPath());
@@ -56,8 +63,15 @@ public:
   std::int64_t AddHistory(std::string_view url, std::string_view title,
                           std::int64_t visited_at);
   std::vector<HistoryEntry> ListHistory(std::size_t limit = 100) const;
+  std::vector<HistoryEntry> SearchHistory(
+      std::string_view query, std::size_t limit = 100) const;
   bool DeleteHistory(std::int64_t id);
   bool ClearHistory();
+
+  std::int64_t AddBookmark(
+      std::string_view url, std::string_view title);
+  std::vector<Bookmark> ListBookmarks() const;
+  bool DeleteBookmark(std::int64_t id);
 
   bool SetPermission(std::string_view capability, bool granted);
   std::optional<bool> GetPermission(std::string_view capability) const;

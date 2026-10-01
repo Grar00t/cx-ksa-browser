@@ -3,41 +3,104 @@
 #include "agent/agent_core.h"
 #include "agent/consent_dialog.h"
 #include "agent/permissions.h"
+#include "browser/bookmark_service.h"
+#include "browser/history_service.h"
+#include "browser/tab_manager.h"
 #include "mcp/allowlist_dialog.h"
 #include "mcp/mcp_client.h"
 
 #include <WebView2EnvironmentOptions.h>
+#include <commctrl.h>
 
-#include <cwchar>
+#include <algorithm>
+#include <string>
+#include <utility>
+#include <utility>
 
 using Microsoft::WRL::Callback;
 
 namespace {
 constexpr wchar_t kWindowClass[] = L"CXBuildWindowClass";
-constexpr wchar_t kWindowTitle[] = L"CX Build - P05";
+constexpr wchar_t kWindowTitle[] = L"CX Build - P06";
+
 constexpr WORD kAgentStart = 40001;
 constexpr WORD kAgentStop = 40002;
 constexpr WORD kAgentRevokeAll = 40003;
 constexpr WORD kMcpAllowlist = 40101;
+
+constexpr WORD kBack = 41001;
+constexpr WORD kForward = 41002;
+constexpr WORD kReload = 41003;
+constexpr WORD kGo = 41004;
+constexpr WORD kBookmark = 41005;
+constexpr WORD kNewTab = 41006;
+constexpr WORD kCloseTab = 41007;
+constexpr WORD kHistory = 41008;
+constexpr WORD kBookmarks = 41009;
+
+std::string WideToUtf8(std::wstring_view value) {
+  if (value.empty()) return {};
+  const int size = WideCharToMultiByte(
+      CP_UTF8, WC_ERR_INVALID_CHARS, value.data(),
+      static_cast<int>(value.size()), nullptr, 0, nullptr, nullptr);
+  if (size <= 0) return {};
+  std::string output(static_cast<std::size_t>(size), '\0');
+  if (WideCharToMultiByte(
+          CP_UTF8, WC_ERR_INVALID_CHARS, value.data(),
+          static_cast<int>(value.size()), output.data(), size,
+          nullptr, nullptr) != size) {
+    return {};
+  }
+  return output;
 }
+
+std::wstring Utf8ToWide(std::string_view value) {
+  if (value.empty()) return {};
+  const int size = MultiByteToWideChar(
+      CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
+      static_cast<int>(value.size()), nullptr, 0);
+  if (size <= 0) return {};
+  std::wstring output(static_cast<std::size_t>(size), L'\0');
+  if (MultiByteToWideChar(
+          CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
+          static_cast<int>(value.size()), output.data(), size) != size) {
+    return {};
+  }
+  return output;
+}
+}  // namespace
 
 AppWindow::AppWindow(
     cx::agent::AgentCore& agent,
     cx::agent::PermissionManager& permissions,
     cx::agent::ConsentDialog& consent_dialog,
     cx::mcp::AllowlistDialog& mcp_dialog,
-    cx::mcp::McpClient& mcp_client)
+    cx::mcp::McpClient& mcp_client,
+    cx::browser::TabManager& tabs,
+    cx::browser::NavigationController& navigation,
+    cx::browser::HistoryService& history,
+    cx::browser::BookmarkService& bookmarks)
     : agent_(agent),
       permissions_(permissions),
       consent_dialog_(consent_dialog),
       mcp_dialog_(mcp_dialog),
-      mcp_client_(mcp_client) {}
+      mcp_client_(mcp_client),
+      tabs_(tabs),
+      navigation_(navigation),
+      history_(history),
+      bookmarks_(bookmarks),
+      history_dialog_(
+          history_,
+          [this](std::string url) { OpenLibraryUrl(std::move(url)); }),
+      bookmarks_dialog_(
+          bookmarks_,
+          [this](std::string url) { OpenLibraryUrl(std::move(url)); }) {
+  navigation_.AttachSurface(this);
+}
 
 int AppWindow::Run(HINSTANCE instance, int show_command) {
   const HRESULT com = OleInitialize(nullptr);
-  if (FAILED(com)) {
-    return 1;
-  }
+  if (FAILED(com)) return 1;
 
   if (!Create(instance, show_command)) {
     OleUninitialize();
@@ -49,6 +112,7 @@ int AppWindow::Run(HINSTANCE instance, int show_command) {
     TranslateMessage(&message);
     DispatchMessageW(&message);
   }
+
   webview_.Reset();
   controller_.Reset();
   OleUninitialize();
@@ -56,15 +120,22 @@ int AppWindow::Run(HINSTANCE instance, int show_command) {
 }
 
 bool AppWindow::Create(HINSTANCE instance, int) {
+  INITCOMMONCONTROLSEX controls{};
+  controls.dwSize = sizeof(controls);
+  controls.dwICC = ICC_TAB_CLASSES;
+  InitCommonControlsEx(&controls);
+
   WNDCLASSEXW window_class{};
   window_class.cbSize = sizeof(window_class);
   window_class.hInstance = instance;
   window_class.lpfnWndProc = &AppWindow::WndProc;
   window_class.lpszClassName = kWindowClass;
   window_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-  window_class.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+  window_class.hbrBackground =
+      reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
 
-  if (!RegisterClassExW(&window_class) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
+  if (!RegisterClassExW(&window_class) &&
+      GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
     return false;
   }
 
@@ -72,13 +143,16 @@ bool AppWindow::Create(HINSTANCE instance, int) {
       0, kWindowClass, kWindowTitle, WS_OVERLAPPEDWINDOW,
       CW_USEDEFAULT, CW_USEDEFAULT, 1024, 768,
       nullptr, nullptr, instance, this);
-  if (!hwnd_) {
-    return false;
-  }
+  if (!hwnd_) return false;
+
   CreateMenus();
+  CreateBrowserControls();
+  RefreshBrowserChrome();
+
   ShowWindow(hwnd_, SW_SHOWNORMAL);
-  SetWindowPos(hwnd_, nullptr, 0, 0, 1024, 768,
-               SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+  SetWindowPos(
+      hwnd_, nullptr, 0, 0, 1024, 768,
+      SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
   UpdateWindow(hwnd_);
   InitializeWebView();
   return true;
@@ -86,20 +160,25 @@ bool AppWindow::Create(HINSTANCE instance, int) {
 
 void AppWindow::CreateMenus() {
   HMENU menu_bar = CreateMenu();
+  HMENU browser_menu = CreatePopupMenu();
   HMENU agent_menu = CreatePopupMenu();
   HMENU mcp_menu = CreatePopupMenu();
-  if (!menu_bar || !agent_menu || !mcp_menu) {
-    if (agent_menu) {
-      DestroyMenu(agent_menu);
-    }
-    if (mcp_menu) {
-      DestroyMenu(mcp_menu);
-    }
-    if (menu_bar) {
-      DestroyMenu(menu_bar);
-    }
+  if (!menu_bar || !browser_menu || !agent_menu || !mcp_menu) {
+    if (browser_menu) DestroyMenu(browser_menu);
+    if (agent_menu) DestroyMenu(agent_menu);
+    if (mcp_menu) DestroyMenu(mcp_menu);
+    if (menu_bar) DestroyMenu(menu_bar);
     return;
   }
+
+  AppendMenuW(browser_menu, MF_STRING, kNewTab, L"New Tab");
+  AppendMenuW(browser_menu, MF_STRING, kCloseTab, L"Close Tab");
+  AppendMenuW(browser_menu, MF_SEPARATOR, 0, nullptr);
+  AppendMenuW(browser_menu, MF_STRING, kHistory, L"History...");
+  AppendMenuW(browser_menu, MF_STRING, kBookmarks, L"Bookmarks...");
+  AppendMenuW(
+      menu_bar, MF_POPUP,
+      reinterpret_cast<UINT_PTR>(browser_menu), L"Browser");
 
   AppendMenuW(agent_menu, MF_STRING, kAgentStart, L"Start Agent...");
   AppendMenuW(agent_menu, MF_STRING, kAgentStop, L"Stop Agent");
@@ -117,10 +196,100 @@ void AppWindow::CreateMenus() {
   AppendMenuW(
       menu_bar, MF_POPUP,
       reinterpret_cast<UINT_PTR>(mcp_menu), L"MCP");
+
   SetMenu(hwnd_, menu_bar);
 }
 
+void AppWindow::CreateBrowserControls() {
+  tab_strip_ = CreateWindowExW(
+      0, WC_TABCONTROLW, L"",
+      WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS |
+          TCS_TABS | TCS_SINGLELINE,
+      0, 0, 100, 32,
+      hwnd_, nullptr, nullptr, nullptr);
+
+  back_button_ = CreateWindowExW(
+      0, L"BUTTON", L"<",
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+      0, 0, 36, 30,
+      hwnd_, reinterpret_cast<HMENU>(kBack), nullptr, nullptr);
+  forward_button_ = CreateWindowExW(
+      0, L"BUTTON", L">",
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+      0, 0, 36, 30,
+      hwnd_, reinterpret_cast<HMENU>(kForward), nullptr, nullptr);
+  reload_button_ = CreateWindowExW(
+      0, L"BUTTON", L"Reload",
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+      0, 0, 60, 30,
+      hwnd_, reinterpret_cast<HMENU>(kReload), nullptr, nullptr);
+  address_bar_ = CreateWindowExW(
+      WS_EX_CLIENTEDGE, L"EDIT", L"",
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
+      0, 0, 100, 30,
+      hwnd_, nullptr, nullptr, nullptr);
+  go_button_ = CreateWindowExW(
+      0, L"BUTTON", L"Go",
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+      0, 0, 44, 30,
+      hwnd_, reinterpret_cast<HMENU>(kGo), nullptr, nullptr);
+  bookmark_button_ = CreateWindowExW(
+      0, L"BUTTON", L"Bookmark",
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+      0, 0, 78, 30,
+      hwnd_, reinterpret_cast<HMENU>(kBookmark), nullptr, nullptr);
+  new_tab_button_ = CreateWindowExW(
+      0, L"BUTTON", L"+",
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+      0, 0, 34, 30,
+      hwnd_, reinterpret_cast<HMENU>(kNewTab), nullptr, nullptr);
+  close_tab_button_ = CreateWindowExW(
+      0, L"BUTTON", L"x",
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+      0, 0, 34, 30,
+      hwnd_, reinterpret_cast<HMENU>(kCloseTab), nullptr, nullptr);
+
+  LayoutControls();
+}
+
 void AppWindow::HandleCommand(WORD command) {
+  switch (command) {
+    case kBack:
+      navigation_.Back();
+      RefreshBrowserChrome();
+      return;
+    case kForward:
+      navigation_.Forward();
+      RefreshBrowserChrome();
+      return;
+    case kReload:
+      navigation_.Reload();
+      return;
+    case kGo:
+      NavigateAddressBar();
+      return;
+    case kBookmark:
+      BookmarkCurrent();
+      return;
+    case kNewTab:
+      NewTab();
+      return;
+    case kCloseTab:
+      CloseActiveTab();
+      return;
+    case kHistory:
+      history_dialog_.Show(hwnd_);
+      return;
+    case kBookmarks:
+      bookmarks_dialog_.Show(hwnd_);
+      return;
+    case kMcpAllowlist:
+      mcp_dialog_.Show(hwnd_);
+      return;
+    default:
+      break;
+  }
+
   if (command == kAgentStart) {
     if (agent_.Start(hwnd_)) {
       MessageBoxW(
@@ -167,109 +336,435 @@ void AppWindow::HandleCommand(WORD command) {
           hwnd_, L"Permission revocation could not be saved.",
           L"CX Agent Permissions", MB_OK | MB_ICONERROR);
     }
+  }
+}
+
+void AppWindow::HandleNotify(const NMHDR* header) {
+  if (!header) return;
+  if (header->hwndFrom == tab_strip_ &&
+      header->code == TCN_SELCHANGE) {
+    ActivateSelectedTab();
+  }
+}
+
+void AppWindow::LayoutControls() {
+  if (!hwnd_) return;
+
+  RECT client{};
+  GetClientRect(hwnd_, &client);
+  const int width = static_cast<int>(
+      client.right > client.left
+          ? client.right - client.left
+          : 0);
+  const int height = static_cast<int>(
+      client.bottom > client.top
+          ? client.bottom - client.top
+          : 0);
+
+  const int tab_height = 34;
+  const int toolbar_y = tab_height + 2;
+  const int toolbar_height = 34;
+  const int content_y = toolbar_y + toolbar_height + 4;
+
+  MoveWindow(tab_strip_, 0, 0, width, tab_height, TRUE);
+
+  int x = 6;
+  MoveWindow(back_button_, x, toolbar_y, 36, 30, TRUE);
+  x += 40;
+  MoveWindow(forward_button_, x, toolbar_y, 36, 30, TRUE);
+  x += 40;
+  MoveWindow(reload_button_, x, toolbar_y, 60, 30, TRUE);
+  x += 64;
+
+  const int right_fixed = 44 + 6 + 78 + 6 + 34 + 6 + 34 + 12;
+  const int requested_address_width =
+      width - x - right_fixed;
+  const int address_width =
+      requested_address_width > 120
+          ? requested_address_width
+          : 120;
+  MoveWindow(address_bar_, x, toolbar_y, address_width, 30, TRUE);
+  x += address_width + 6;
+  MoveWindow(go_button_, x, toolbar_y, 44, 30, TRUE);
+  x += 50;
+  MoveWindow(bookmark_button_, x, toolbar_y, 78, 30, TRUE);
+  x += 84;
+  MoveWindow(new_tab_button_, x, toolbar_y, 34, 30, TRUE);
+  x += 40;
+  MoveWindow(close_tab_button_, x, toolbar_y, 34, 30, TRUE);
+
+  if (controller_) {
+    RECT bounds{0, content_y, width, height};
+    controller_->put_Bounds(bounds);
+  }
+}
+
+void AppWindow::RefreshBrowserChrome() {
+  RefreshTabs();
+  RefreshAddressBar();
+
+  EnableWindow(
+      back_button_, navigation_.CanGoBack() ? TRUE : FALSE);
+  EnableWindow(
+      forward_button_, navigation_.CanGoForward() ? TRUE : FALSE);
+}
+
+void AppWindow::RefreshTabs() {
+  if (!tab_strip_) return;
+
+  TabCtrl_DeleteAllItems(tab_strip_);
+  int selected = -1;
+  int index = 0;
+  for (const auto& tab : tabs_.tabs()) {
+    std::wstring title = Utf8ToWide(
+        tab.title.empty() ? std::string_view("New Tab")
+                          : std::string_view(tab.title));
+    if (title.size() > 36) {
+      title.resize(33);
+      title += L"...";
+    }
+
+    TCITEMW item{};
+    item.mask = TCIF_TEXT | TCIF_PARAM;
+    item.pszText = title.data();
+    item.lParam = static_cast<LPARAM>(tab.id);
+    TabCtrl_InsertItem(tab_strip_, index, &item);
+
+    if (tab.id == tabs_.active_tab_id()) {
+      selected = index;
+    }
+    ++index;
+  }
+
+  if (selected >= 0) {
+    TabCtrl_SetCurSel(tab_strip_, selected);
+  }
+}
+
+void AppWindow::RefreshAddressBar() {
+  if (!address_bar_) return;
+  const auto active = tabs_.active_tab();
+  if (!active.has_value()) {
+    SetWindowTextW(address_bar_, L"");
+    return;
+  }
+  const std::wstring url = Utf8ToWide(active->url);
+  SetWindowTextW(address_bar_, url.c_str());
+}
+
+void AppWindow::NavigateAddressBar() {
+  if (!address_bar_) return;
+
+  const int length = GetWindowTextLengthW(address_bar_);
+  if (length <= 0) return;
+
+  std::wstring value(
+      static_cast<std::size_t>(length) + 1, L'\0');
+  const int copied = GetWindowTextW(
+      address_bar_, value.data(), length + 1);
+  if (copied <= 0) return;
+  value.resize(static_cast<std::size_t>(copied));
+
+  if (!navigation_.NavigateAddress(value)) {
+    MessageBeep(MB_ICONWARNING);
+    RefreshAddressBar();
+    return;
+  }
+  RefreshBrowserChrome();
+}
+
+void AppWindow::NewTab() {
+  const auto id = tabs_.CreateTab();
+  if (!id.has_value()) {
+    MessageBoxW(
+        hwnd_, L"Could not create a new local tab.",
+        L"CX Browser", MB_OK | MB_ICONERROR);
     return;
   }
 
-  if (command == kMcpAllowlist) {
-    mcp_dialog_.Show(hwnd_);
+  RefreshBrowserChrome();
+  if (webview_) {
+    navigation_.ActivateTab(*id);
   }
+}
+
+void AppWindow::CloseActiveTab() {
+  const auto closing = tabs_.active_tab_id();
+  if (closing <= 0) return;
+
+  if (!tabs_.CloseTab(closing)) {
+    MessageBoxW(
+        hwnd_, L"Could not close this tab.",
+        L"CX Browser", MB_OK | MB_ICONERROR);
+    return;
+  }
+
+  navigation_.ForgetTab(closing);
+  RefreshBrowserChrome();
+  if (webview_) {
+    navigation_.ActivateTab(tabs_.active_tab_id());
+  }
+}
+
+void AppWindow::ActivateSelectedTab() {
+  const int selected = TabCtrl_GetCurSel(tab_strip_);
+  if (selected < 0) return;
+
+  TCITEMW item{};
+  item.mask = TCIF_PARAM;
+  if (!TabCtrl_GetItem(tab_strip_, selected, &item)) {
+    return;
+  }
+
+  const auto id = static_cast<std::int64_t>(item.lParam);
+  if (navigation_.ActivateTab(id)) {
+    RefreshBrowserChrome();
+  }
+}
+
+void AppWindow::BookmarkCurrent() {
+  const auto active = tabs_.active_tab();
+  if (!active.has_value() ||
+      active->url.empty() ||
+      active->url == "about:blank") {
+    MessageBeep(MB_ICONWARNING);
+    return;
+  }
+
+  if (bookmarks_.Add(
+          active->url,
+          active->title.empty() ? active->url : active->title) <= 0) {
+    MessageBoxW(
+        hwnd_, L"Could not save the local bookmark.",
+        L"CX Browser", MB_OK | MB_ICONERROR);
+    return;
+  }
+
+  bookmarks_dialog_.RefreshIfOpen();
+}
+
+void AppWindow::OpenLibraryUrl(std::string url) {
+  navigation_.NavigateUrl(url);
+  RefreshBrowserChrome();
 }
 
 void AppWindow::InitializeWebView() {
-  auto options = Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
+  auto options =
+      Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
   options->put_AdditionalBrowserArguments(
-      L"--disable-background-networking --disable-component-update "
-      L"--disable-sync --no-first-run --metrics-recording-only "
-      L"--proxy-server=127.0.0.1:9 --proxy-bypass-list=<-loopback> "
-      L"--host-resolver-rules=MAP * 0.0.0.0");
+      L"--disable-background-networking "
+      L"--disable-component-update "
+      L"--disable-sync "
+      L"--disable-breakpad "
+      L"--no-first-run "
+      L"--metrics-recording-only");
 
-  const HRESULT hr = CreateCoreWebView2EnvironmentWithOptions(
-      nullptr, nullptr, options.Get(),
-      Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
-          [this](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
-            if (FAILED(result) || !environment) {
-              MessageBoxW(hwnd_, L"WebView2 environment creation failed.", L"CX Build", MB_ICONERROR);
-              return result;
-            }
-            return environment->CreateCoreWebView2Controller(
-                hwnd_,
-                Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
-                    [this](HRESULT controller_result,
-                           ICoreWebView2Controller* controller) -> HRESULT {
-                      if (FAILED(controller_result) || !controller) {
-                        MessageBoxW(hwnd_, L"WebView2 controller creation failed.", L"CX Build", MB_ICONERROR);
-                        return controller_result;
-                      }
+  const HRESULT hr =
+      CreateCoreWebView2EnvironmentWithOptions(
+          nullptr, nullptr, options.Get(),
+          Callback<
+              ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
+              [this](
+                  HRESULT result,
+                  ICoreWebView2Environment* environment) -> HRESULT {
+                if (FAILED(result) || !environment) {
+                  MessageBoxW(
+                      hwnd_,
+                      L"WebView2 environment creation failed.",
+                      L"CX Build", MB_ICONERROR);
+                  return result;
+                }
 
-                      controller_ = controller;
-                      controller_->get_CoreWebView2(&webview_);
-                      ResizeWebView();
+                return environment->CreateCoreWebView2Controller(
+                    hwnd_,
+                    Callback<
+                        ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
+                        [this](
+                            HRESULT controller_result,
+                            ICoreWebView2Controller* controller) -> HRESULT {
+                          if (FAILED(controller_result) || !controller) {
+                            MessageBoxW(
+                                hwnd_,
+                                L"WebView2 controller creation failed.",
+                                L"CX Build", MB_ICONERROR);
+                            return controller_result;
+                          }
 
-                      EventRegistrationToken navigation_token{};
-                      webview_->add_NavigationStarting(
-                          Callback<ICoreWebView2NavigationStartingEventHandler>(
-                              [](ICoreWebView2*,
-                                 ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT {
-                                LPWSTR uri = nullptr;
-                                if (SUCCEEDED(args->get_Uri(&uri)) && uri) {
-                                  const bool network =
-                                      wcsncmp(uri, L"http://", 7) == 0 ||
-                                      wcsncmp(uri, L"https://", 8) == 0;
-                                  CoTaskMemFree(uri);
-                                  if (network) {
-                                    args->put_Cancel(TRUE);
-                                  }
-                                }
-                                return S_OK;
-                              }).Get(),
-                          &navigation_token);
+                          controller_ = controller;
+                          controller_->get_CoreWebView2(&webview_);
+                          LayoutControls();
 
-                      EventRegistrationToken new_window_token{};
-                      webview_->add_NewWindowRequested(
-                          Callback<ICoreWebView2NewWindowRequestedEventHandler>(
-                              [](ICoreWebView2*,
-                                 ICoreWebView2NewWindowRequestedEventArgs* args) -> HRESULT {
-                                args->put_Handled(TRUE);
-                                return S_OK;
-                              }).Get(),
-                          &new_window_token);
+                          EventRegistrationToken starting_token{};
+                          webview_->add_NavigationStarting(
+                              Callback<
+                                  ICoreWebView2NavigationStartingEventHandler>(
+                                  [](ICoreWebView2*,
+                                     ICoreWebView2NavigationStartingEventArgs* args)
+                                      -> HRESULT {
+                                    LPWSTR uri = nullptr;
+                                    if (SUCCEEDED(args->get_Uri(&uri)) && uri) {
+                                      const bool allowed =
+                                          cx::browser::NavigationController::
+                                              IsAllowedUrl(uri);
+                                      CoTaskMemFree(uri);
+                                      if (!allowed) {
+                                        args->put_Cancel(TRUE);
+                                      }
+                                    }
+                                    return S_OK;
+                                  }).Get(),
+                              &starting_token);
 
-                      return webview_->Navigate(L"about:blank");
-                    }).Get());
-          }).Get());
+                          EventRegistrationToken completed_token{};
+                          webview_->add_NavigationCompleted(
+                              Callback<
+                                  ICoreWebView2NavigationCompletedEventHandler>(
+                                  [this](
+                                      ICoreWebView2*,
+                                      ICoreWebView2NavigationCompletedEventArgs* args)
+                                      -> HRESULT {
+                                    HandleNavigationCompleted(args);
+                                    return S_OK;
+                                  }).Get(),
+                              &completed_token);
+
+                          EventRegistrationToken new_window_token{};
+                          webview_->add_NewWindowRequested(
+                              Callback<
+                                  ICoreWebView2NewWindowRequestedEventHandler>(
+                                  [this](
+                                      ICoreWebView2*,
+                                      ICoreWebView2NewWindowRequestedEventArgs* args)
+                                      -> HRESULT {
+                                    HandleNewWindow(args);
+                                    return S_OK;
+                                  }).Get(),
+                              &new_window_token);
+
+                          navigation_.ActivateTab(
+                              tabs_.active_tab_id());
+                          RefreshBrowserChrome();
+                          return S_OK;
+                        }).Get());
+              }).Get());
 
   if (FAILED(hr)) {
-    MessageBoxW(hwnd_, L"WebView2 initialization call failed.", L"CX Build", MB_ICONERROR);
+    MessageBoxW(
+        hwnd_,
+        L"WebView2 initialization call failed.",
+        L"CX Build", MB_ICONERROR);
   }
 }
 
-void AppWindow::ResizeWebView() {
-  if (!controller_ || !hwnd_) {
+bool AppWindow::NavigateTo(std::wstring_view url) {
+  if (!webview_ ||
+      !cx::browser::NavigationController::IsAllowedUrl(url)) {
+    return false;
+  }
+  const std::wstring owned(url);
+  return SUCCEEDED(webview_->Navigate(owned.c_str()));
+}
+
+bool AppWindow::ReloadPage() {
+  return webview_ && SUCCEEDED(webview_->Reload());
+}
+
+void AppWindow::HandleNavigationCompleted(
+    ICoreWebView2NavigationCompletedEventArgs* args) {
+  if (!args || !webview_) return;
+
+  BOOL success = FALSE;
+  if (FAILED(args->get_IsSuccess(&success))) {
+    success = FALSE;
+  }
+
+  LPWSTR source = nullptr;
+  LPWSTR title = nullptr;
+  std::string source_utf8;
+  std::string title_utf8;
+
+  if (SUCCEEDED(webview_->get_Source(&source)) && source) {
+    source_utf8 = WideToUtf8(source);
+    CoTaskMemFree(source);
+  }
+  if (SUCCEEDED(webview_->get_DocumentTitle(&title)) && title) {
+    title_utf8 = WideToUtf8(title);
+    CoTaskMemFree(title);
+  }
+
+  navigation_.OnNavigationCompleted(
+      success != FALSE, source_utf8, title_utf8);
+  RefreshBrowserChrome();
+}
+
+void AppWindow::HandleNewWindow(
+    ICoreWebView2NewWindowRequestedEventArgs* args) {
+  if (!args) return;
+
+  args->put_Handled(TRUE);
+
+  LPWSTR uri = nullptr;
+  if (FAILED(args->get_Uri(&uri)) || !uri) {
     return;
   }
-  RECT bounds{};
-  GetClientRect(hwnd_, &bounds);
-  controller_->put_Bounds(bounds);
+
+  const std::wstring target(uri);
+  CoTaskMemFree(uri);
+  if (!cx::browser::NavigationController::IsAllowedUrl(target)) {
+    return;
+  }
+
+  const auto id = tabs_.CreateTab();
+  if (!id.has_value()) {
+    return;
+  }
+
+  RefreshBrowserChrome();
+  navigation_.ActivateTab(*id);
+  navigation_.NavigateAddress(target);
+  RefreshBrowserChrome();
 }
 
-LRESULT CALLBACK AppWindow::WndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
-  static AppWindow* self = nullptr;
+LRESULT CALLBACK AppWindow::WndProc(
+    HWND hwnd, UINT message,
+    WPARAM wparam, LPARAM lparam) {
+  auto* self = reinterpret_cast<AppWindow*>(
+      GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+
   if (message == WM_NCCREATE) {
-    auto* create = reinterpret_cast<CREATESTRUCTW*>(lparam);
-    self = static_cast<AppWindow*>(create->lpCreateParams);
-    if (self) self->hwnd_ = hwnd;
+    const auto* create =
+        reinterpret_cast<CREATESTRUCTW*>(lparam);
+    self = static_cast<AppWindow*>(
+        create->lpCreateParams);
+    if (self) {
+      self->hwnd_ = hwnd;
+      SetWindowLongPtrW(
+          hwnd, GWLP_USERDATA,
+          reinterpret_cast<LONG_PTR>(self));
+    }
   }
+
   if (self && message == WM_SIZE) {
-    self->ResizeWebView();
+    self->LayoutControls();
     return 0;
   }
+
   if (self && message == WM_COMMAND) {
     self->HandleCommand(LOWORD(wparam));
     return 0;
   }
+
+  if (self && message == WM_NOTIFY) {
+    self->HandleNotify(
+        reinterpret_cast<const NMHDR*>(lparam));
+    return 0;
+  }
+
   if (message == WM_DESTROY) {
     PostQuitMessage(0);
     return 0;
   }
-  return DefWindowProcW(hwnd, message, wparam, lparam);
+
+  return DefWindowProcW(
+      hwnd, message, wparam, lparam);
 }

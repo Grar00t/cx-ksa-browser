@@ -367,6 +367,43 @@ std::vector<HistoryEntry> Database::ListHistory(std::size_t limit) const {
   return entries;
 }
 
+std::vector<HistoryEntry> Database::SearchHistory(
+    std::string_view query, std::size_t limit) const {
+  if (query.empty()) {
+    return ListHistory(limit);
+  }
+
+  std::vector<HistoryEntry> entries;
+  Statement statement(db_,
+      "SELECT id, url, title, visited_at FROM history "
+      "WHERE url LIKE ?1 COLLATE NOCASE "
+      "OR title LIKE ?1 COLLATE NOCASE "
+      "ORDER BY visited_at DESC, id DESC LIMIT ?2;");
+  if (!statement.ok()) {
+    return entries;
+  }
+
+  const std::string pattern = "%" + std::string(query) + "%";
+  const auto bounded =
+      limit > static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max())
+          ? std::numeric_limits<std::int64_t>::max()
+          : static_cast<std::int64_t>(limit);
+  if (!BindText(statement.get(), 1, pattern) ||
+      sqlite3_bind_int64(statement.get(), 2, bounded) != SQLITE_OK) {
+    return entries;
+  }
+
+  while (sqlite3_step(statement.get()) == SQLITE_ROW) {
+    HistoryEntry entry;
+    entry.id = sqlite3_column_int64(statement.get(), 0);
+    entry.url = ColumnText(statement.get(), 1);
+    entry.title = ColumnText(statement.get(), 2);
+    entry.visited_at = sqlite3_column_int64(statement.get(), 3);
+    entries.push_back(std::move(entry));
+  }
+  return entries;
+}
+
 bool Database::DeleteHistory(std::int64_t id) {
   Statement statement(db_,
       "DELETE FROM history WHERE id=?1;");
@@ -380,6 +417,58 @@ bool Database::DeleteHistory(std::int64_t id) {
 
 bool Database::ClearHistory() {
   return Exec("DELETE FROM history;");
+}
+
+std::int64_t Database::AddBookmark(
+    std::string_view url, std::string_view title) {
+  Statement upsert(db_,
+      "INSERT INTO bookmarks(url, title) VALUES(?1, ?2) "
+      "ON CONFLICT(url) DO UPDATE SET title=excluded.title;");
+  if (!upsert.ok() ||
+      !BindText(upsert.get(), 1, url) ||
+      !BindText(upsert.get(), 2, title) ||
+      !StepDone(upsert.get())) {
+    return -1;
+  }
+
+  Statement select(db_,
+      "SELECT id FROM bookmarks WHERE url=?1;");
+  if (!select.ok() || !BindText(select.get(), 1, url) ||
+      sqlite3_step(select.get()) != SQLITE_ROW) {
+    return -1;
+  }
+  return sqlite3_column_int64(select.get(), 0);
+}
+
+std::vector<Bookmark> Database::ListBookmarks() const {
+  std::vector<Bookmark> bookmarks;
+  Statement statement(db_,
+      "SELECT id, url, title, created_at FROM bookmarks "
+      "ORDER BY created_at DESC, id DESC;");
+  if (!statement.ok()) {
+    return bookmarks;
+  }
+
+  while (sqlite3_step(statement.get()) == SQLITE_ROW) {
+    Bookmark bookmark;
+    bookmark.id = sqlite3_column_int64(statement.get(), 0);
+    bookmark.url = ColumnText(statement.get(), 1);
+    bookmark.title = ColumnText(statement.get(), 2);
+    bookmark.created_at = sqlite3_column_int64(statement.get(), 3);
+    bookmarks.push_back(std::move(bookmark));
+  }
+  return bookmarks;
+}
+
+bool Database::DeleteBookmark(std::int64_t id) {
+  Statement statement(db_,
+      "DELETE FROM bookmarks WHERE id=?1;");
+  if (!statement.ok() ||
+      sqlite3_bind_int64(statement.get(), 1, id) != SQLITE_OK ||
+      !StepDone(statement.get())) {
+    return false;
+  }
+  return sqlite3_changes(db_) == 1;
 }
 
 bool Database::SetPermission(std::string_view capability, bool granted) {
