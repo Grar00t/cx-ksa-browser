@@ -109,6 +109,25 @@ if(MSVC)
   target_compile_options(cx_mcp PRIVATE /W4 /permissive- /EHsc)
 endif()
 
+add_library(cx_ui STATIC
+  src/ui/settings_window.cpp
+  src/ui/settings_window.h
+  src/ui/privacy_dashboard.cpp
+  src/ui/privacy_dashboard.h
+  src/ui/permission_dialog.cpp
+  src/ui/permission_dialog.h)
+target_include_directories(cx_ui PUBLIC src)
+target_compile_definitions(cx_ui PRIVATE UNICODE _UNICODE)
+target_link_libraries(cx_ui PUBLIC
+  cx_mcp
+  cx_browser
+  user32
+  shell32
+  comctl32)
+if(MSVC)
+  target_compile_options(cx_ui PRIVATE /W4 /permissive- /EHsc)
+endif()
+
 add_executable(cx WIN32
   src/main.cpp
   src/app_window.cpp
@@ -116,8 +135,7 @@ add_executable(cx WIN32
 target_include_directories(cx PRIVATE
   "${WEBVIEW2_ROOT}/build/native/include")
 target_link_libraries(cx PRIVATE
-  cx_mcp
-  cx_browser
+  cx_ui
   "${WEBVIEW2_ROOT}/build/native/${WEBVIEW2_ARCH}/WebView2LoaderStatic.lib"
   user32 ole32 shell32 shlwapi version comctl32)
 target_compile_definitions(cx PRIVATE UNICODE _UNICODE)
@@ -163,8 +181,9 @@ add_executable(storage_tests
   tests/storage_test.cpp
   tests/agent_test.cpp
   tests/mcp_test.cpp
-  tests/browser_test.cpp)
-target_link_libraries(storage_tests PRIVATE cx_mcp cx_browser GTest::gtest_main)
+  tests/browser_test.cpp
+  tests/ui_test.cpp)
+target_link_libraries(storage_tests PRIVATE cx_ui GTest::gtest_main)
 add_dependencies(storage_tests mcp_test_server browser_crash_writer)
 if(MSVC)
   target_compile_options(storage_tests PRIVATE /W4 /permissive- /EHsc)

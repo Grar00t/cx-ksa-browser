@@ -15,6 +15,12 @@ bool HistoryService::RecordVisit(
     return true;
   }
 
+  const auto enabled =
+      database_.GetSetting("privacy.save_history");
+  if (!enabled.has_value() || *enabled != "1") {
+    return true;
+  }
+
   const auto now =
       std::chrono::system_clock::now();
   const auto seconds =

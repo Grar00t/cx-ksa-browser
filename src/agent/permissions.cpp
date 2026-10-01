@@ -79,9 +79,14 @@ bool PermissionManager::Ensure(HWND owner, Capability capability) {
   return granted;
 }
 
-bool PermissionManager::Revoke(Capability capability) {
+bool PermissionManager::SetGranted(
+    Capability capability, bool granted) {
   return database_.SetPermission(
-      DescribeCapability(capability).id, false);
+      DescribeCapability(capability).id, granted);
+}
+
+bool PermissionManager::Revoke(Capability capability) {
+  return SetGranted(capability, false);
 }
 
 bool PermissionManager::RevokeAll() {

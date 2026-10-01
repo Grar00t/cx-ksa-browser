@@ -82,6 +82,8 @@ protected:
 };
 
 TEST_F(BrowserTest, SessionRestoresImmediatelyPersistedTabsAfterReopen) {
+  ASSERT_TRUE(database_->SetSetting(
+      "privacy.restore_session", "1"));
   cx::browser::TabManager first(*database_);
   ASSERT_TRUE(first.Restore());
   ASSERT_EQ(first.tabs().size(), 1u);
@@ -136,6 +138,8 @@ TEST_F(BrowserTest, SupportsMoreThanTenTabsAndReturnsToOne) {
 }
 
 TEST_F(BrowserTest, AbruptExitRestoresCommittedSession) {
+  ASSERT_TRUE(database_->SetSetting(
+      "privacy.restore_session", "1"));
   database_->Close();
 
   const auto helper = CrashWriterPath();
@@ -275,6 +279,8 @@ TEST_F(BrowserTest, BookmarksAreLocalAndUniqueByUrl) {
 }
 
 TEST_F(BrowserTest, NavigationMaintainsPerTabBackForwardState) {
+  ASSERT_TRUE(database_->SetSetting(
+      "privacy.save_history", "1"));
   cx::browser::TabManager tabs(*database_);
   ASSERT_TRUE(tabs.Restore());
   cx::browser::HistoryService history(*database_);

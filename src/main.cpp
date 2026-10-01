@@ -1,6 +1,7 @@
 #include "agent/agent_core.h"
-#include "agent/consent_dialog.h"
 #include "agent/permissions.h"
+#include "ui/permission_dialog.h"
+#include "ui/settings_window.h"
 #include "app_window.h"
 #include "browser/bookmark_service.h"
 #include "browser/history_service.h"
@@ -54,9 +55,9 @@ int WINAPI wWinMain(
     return 6;
   }
 
-  cx::agent::ConsentDialog consent_dialog;
+  cx::ui::PermissionDialog permission_dialog;
   cx::agent::PermissionManager permissions(
-      database, consent_dialog);
+      database, permission_dialog);
   cx::agent::AgentCore agent(permissions, agent_logger);
 
   cx::mcp::AllowlistManager mcp_allowlist;
@@ -72,9 +73,24 @@ int WINAPI wWinMain(
   cx::mcp::AllowlistDialog mcp_dialog(
       mcp_allowlist, mcp_client);
 
+  cx::ui::SettingsWindow settings_window(
+      database, permissions, agent,
+      mcp_allowlist, mcp_dialog, mcp_client,
+      history, bookmarks);
+
   AppWindow app(
-      agent, permissions, consent_dialog,
+      agent, permissions,
+      permission_dialog, settings_window,
       mcp_dialog, mcp_client,
       tabs, navigation, history, bookmarks);
-  return app.Run(instance, show_command);
+
+  const int result = app.Run(instance, show_command);
+
+  const auto clear_history =
+      database.GetSetting("privacy.clear_history_on_exit");
+  if (!clear_history.has_value() ||
+      *clear_history == "1") {
+    history.Clear();
+  }
+  return result;
 }

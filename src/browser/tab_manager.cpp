@@ -21,6 +21,32 @@ TabManager::TabManager(storage::Database& database)
 
 bool TabManager::Restore() {
   tabs_ = database_.ListTabs();
+
+  const auto restore_setting =
+      database_.GetSetting("privacy.restore_session");
+  const bool restore_previous =
+      restore_setting.has_value() &&
+      *restore_setting == "1";
+
+  if (!restore_previous && !tabs_.empty()) {
+    storage::Transaction transaction(database_);
+    if (!transaction.ok()) {
+      return false;
+    }
+    for (const auto& tab : tabs_) {
+      if (!database_.DeleteTab(tab.id)) {
+        return false;
+      }
+    }
+    if (!database_.SetSetting(
+            kActiveTabSetting, "0") ||
+        !transaction.Commit()) {
+      return false;
+    }
+    tabs_.clear();
+    active_tab_id_ = 0;
+  }
+
   if (!NormalizePositions()) {
     tabs_.clear();
     active_tab_id_ = 0;

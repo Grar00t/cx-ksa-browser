@@ -13,8 +13,12 @@
 
 namespace cx::agent {
 class AgentCore;
-class ConsentDialog;
 class PermissionManager;
+}
+
+namespace cx::ui {
+class PermissionDialog;
+class SettingsWindow;
 }
 
 namespace cx::mcp {
@@ -33,7 +37,8 @@ public:
   AppWindow(
       cx::agent::AgentCore& agent,
       cx::agent::PermissionManager& permissions,
-      cx::agent::ConsentDialog& consent_dialog,
+      cx::ui::PermissionDialog& permission_dialog,
+      cx::ui::SettingsWindow& settings_window,
       cx::mcp::AllowlistDialog& mcp_dialog,
       cx::mcp::McpClient& mcp_client,
       cx::browser::TabManager& tabs,
@@ -75,7 +80,8 @@ private:
 
   cx::agent::AgentCore& agent_;
   cx::agent::PermissionManager& permissions_;
-  cx::agent::ConsentDialog& consent_dialog_;
+  cx::ui::PermissionDialog& permission_dialog_;
+  cx::ui::SettingsWindow& settings_window_;
   cx::mcp::AllowlistDialog& mcp_dialog_;
   cx::mcp::McpClient& mcp_client_;
   cx::browser::TabManager& tabs_;

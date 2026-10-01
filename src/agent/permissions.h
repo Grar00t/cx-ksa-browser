@@ -45,6 +45,7 @@ public:
 
   bool IsGranted(Capability capability) const;
   bool Ensure(HWND owner, Capability capability);
+  bool SetGranted(Capability capability, bool granted);
   bool Revoke(Capability capability);
   bool RevokeAll();
   std::vector<Capability> Granted() const;

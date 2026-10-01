@@ -1,8 +1,9 @@
 #include "app_window.h"
 
 #include "agent/agent_core.h"
-#include "agent/consent_dialog.h"
 #include "agent/permissions.h"
+#include "ui/permission_dialog.h"
+#include "ui/settings_window.h"
 #include "browser/bookmark_service.h"
 #include "browser/history_service.h"
 #include "browser/tab_manager.h"
@@ -15,13 +16,12 @@
 #include <algorithm>
 #include <string>
 #include <utility>
-#include <utility>
 
 using Microsoft::WRL::Callback;
 
 namespace {
 constexpr wchar_t kWindowClass[] = L"CXBuildWindowClass";
-constexpr wchar_t kWindowTitle[] = L"CX Build - P06";
+constexpr wchar_t kWindowTitle[] = L"CX Build - P07";
 
 constexpr WORD kAgentStart = 40001;
 constexpr WORD kAgentStop = 40002;
@@ -37,6 +37,7 @@ constexpr WORD kNewTab = 41006;
 constexpr WORD kCloseTab = 41007;
 constexpr WORD kHistory = 41008;
 constexpr WORD kBookmarks = 41009;
+constexpr WORD kSettings = 41010;
 
 std::string WideToUtf8(std::wstring_view value) {
   if (value.empty()) return {};
@@ -73,7 +74,8 @@ std::wstring Utf8ToWide(std::string_view value) {
 AppWindow::AppWindow(
     cx::agent::AgentCore& agent,
     cx::agent::PermissionManager& permissions,
-    cx::agent::ConsentDialog& consent_dialog,
+    cx::ui::PermissionDialog& permission_dialog,
+    cx::ui::SettingsWindow& settings_window,
     cx::mcp::AllowlistDialog& mcp_dialog,
     cx::mcp::McpClient& mcp_client,
     cx::browser::TabManager& tabs,
@@ -82,7 +84,8 @@ AppWindow::AppWindow(
     cx::browser::BookmarkService& bookmarks)
     : agent_(agent),
       permissions_(permissions),
-      consent_dialog_(consent_dialog),
+      permission_dialog_(permission_dialog),
+      settings_window_(settings_window),
       mcp_dialog_(mcp_dialog),
       mcp_client_(mcp_client),
       tabs_(tabs),
@@ -176,6 +179,10 @@ void AppWindow::CreateMenus() {
   AppendMenuW(browser_menu, MF_SEPARATOR, 0, nullptr);
   AppendMenuW(browser_menu, MF_STRING, kHistory, L"History...");
   AppendMenuW(browser_menu, MF_STRING, kBookmarks, L"Bookmarks...");
+  AppendMenuW(browser_menu, MF_SEPARATOR, 0, nullptr);
+  AppendMenuW(
+      browser_menu, MF_STRING, kSettings,
+      L"Settings & Privacy...");
   AppendMenuW(
       menu_bar, MF_POPUP,
       reinterpret_cast<UINT_PTR>(browser_menu), L"Browser");
@@ -283,6 +290,9 @@ void AppWindow::HandleCommand(WORD command) {
     case kBookmarks:
       bookmarks_dialog_.Show(hwnd_);
       return;
+    case kSettings:
+      settings_window_.Show(hwnd_);
+      return;
     case kMcpAllowlist:
       mcp_dialog_.Show(hwnd_);
       return;
@@ -321,7 +331,7 @@ void AppWindow::HandleCommand(WORD command) {
       return;
     }
 
-    if (!consent_dialog_.ConfirmRevokeAll(hwnd_, granted.size())) {
+    if (!permission_dialog_.ConfirmRevokeAll(hwnd_, granted.size())) {
       return;
     }
 

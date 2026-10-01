@@ -1,47 +1,64 @@
 # Project State
 
 ## Current Status
-Phase: P06 implemented on branch `prompt-P06`.
-CX now has logical tabs over one WebView2 surface, immediate SQLite session
-persistence, local history search, local bookmarks, and browser navigation UI.
+Phase: P07 implemented on branch `prompt-P07`.
+CX now has a modeless Settings & Privacy window with four visible tabs,
+privacy-first defaults, direct SQLite persistence, and a live privacy dashboard.
 
-## Browser
-The window provides a tab strip, address bar, Back, Forward, Reload, Go,
-Bookmark, New Tab, Close Tab, History, and Bookmarks.
-Tabs are lightweight logical tabs; switching navigates the shared WebView2
-surface to that tab's persisted URL.
+## Settings Window
+Open from `Browser > Settings & Privacy...`.
 
-## Persistence
-SQLite migration v3 adds `bookmarks`.
-Tab creation, close, activation, URL, and title changes are committed when
-they occur. The active tab ID is stored in `settings`, so restore does not
-depend on a clean application shutdown.
+Visible tabs:
+- Privacy & Security
+- Agent Permissions
+- MCP Allowlist
+- Data & Storage
 
-History is local in SQLite and searchable by URL or title.
-Bookmarks are local in SQLite and unique by URL.
+Privacy settings are explicitly enumerated in code and rendered from the same
+schema:
+- `privacy.save_history` default OFF
+- `privacy.restore_session` default OFF
+- `privacy.clear_history_on_exit` default ON
+
+Sync is displayed as disabled by design and CX application telemetry upload is
+displayed as none; neither is hidden behind another setting.
+
+## Immediate Persistence And Enforcement
+Privacy toggles write to the existing SQLite `settings` table immediately.
+Agent capability checkboxes write to the SQLite `permissions` table
+immediately. Revoking `agent.run` stops the agent and MCP; revoking
+`mcp.connect` stops MCP immediately.
+
+History recording reads `privacy.save_history` at each visit.
+Session restore reads `privacy.restore_session` at launch.
+Exit cleanup reads `privacy.clear_history_on_exit` after the browser loop.
+
+The P05 MCP allowlist remains persisted in its mandated local JSON file rather
+than being duplicated into SQLite.
+
+## Privacy Dashboard
+The dashboard reports actual current state:
+- enabled agent capability IDs
+- active MCP server or none
+- number of MCP allowlist entries
+- total local data size under `%APPDATA%\CX Build`
+
+Directory-size measurement runs on a worker thread and posts its result back to
+the settings window, so filesystem traversal does not block the UI thread.
 
 ## Verification On 2026-10-01
 - PASS: Release build produced `build/Release/cx.exe`.
 - PASS: CTest passed.
-- PASS: direct GoogleTest run: 36 tests, 36 passed.
-- PASS: 13 simultaneous logical tabs persisted and closed correctly.
-- PASS: crash helper exited with code 77 and the next process restored 3 tabs
-  plus the previously active tab.
-- PASS: measured maximum logical-tab creation time over 12 creates:
-  `2.9042 ms` (<100 ms).
-- PASS: 25 cycles of 12 create/close operations did not leak process handles
-  beyond the test tolerance.
-- PASS: local history search matches title and URL.
-- PASS: bookmark add/update/delete is local and persistent.
-- PASS: javascript-style explicit schemes are rejected by address parsing.
-
-## Privacy Boundary
-CX passes WebView2 flags disabling sync, component updates, and background
-networking and does not implement any application-level sync or telemetry.
-The browser must permit user-requested HTTP/HTTPS traffic for P06 navigation.
-The separate Evergreen WebView2 runtime is third-party runtime code; absence
-of all vendor-runtime telemetry is not claimed without independent runtime
-verification.
+- PASS: direct GoogleTest run: 41 tests, 41 passed.
+- PASS: missing history setting records no visits; explicit enable records them.
+- PASS: missing session-restore setting discards prior tabs on next launch.
+- PASS: dashboard summary reflects a granted permission and MCP allowlist count.
+- PASS: asynchronous local-size refresh returned to the caller under 100 ms.
+- PASS: actual Settings window opened in 64.7208 ms in an isolated AppData.
+- PASS: actual Settings TabControl reported exactly four pages.
+- PASS: actual privacy checkbox was found and clicked.
+- PASS: isolated SQLite immediately contained `privacy.save_history=1`.
+- PASS: application remained alive after the UI interaction.
 
 ## Next Prompt
-P07.
+P08.
