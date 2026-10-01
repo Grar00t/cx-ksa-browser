@@ -11,6 +11,7 @@ It is not affiliated with Perplexity or Comet.
 - No telemetry, analytics, crash upload, remote update, or cloud sync by default.
 
 ## Status
-P01 bootstrap documentation is complete. Application code begins in later prompts.
+P03 local-first storage is implemented: native WebView2 shell, SQLite storage,
+migrations, CRUD, and GoogleTest coverage.
 
-See `docs/STATE.md` for the current project state.
+See `docs/STATE.md` for verified build/test state and known limitations.

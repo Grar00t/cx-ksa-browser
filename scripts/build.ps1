@@ -13,7 +13,11 @@ try {
   if (-not (Test-Path $Exe)) {
     throw "Expected executable not found: $Exe"
   }
-  Write-Host "Built: $Exe"
+  ctest --test-dir build --output-on-failure
+  if ($LASTEXITCODE -ne 0) {
+    throw "Storage tests failed."
+  }
+  Write-Host "Built and tested: $Exe"
 }
 finally {
   Pop-Location

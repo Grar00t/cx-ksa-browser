@@ -1,10 +1,12 @@
 cmake_minimum_required(VERSION 3.24)
-project(cx LANGUAGES CXX)
+project(cx LANGUAGES C CXX)
 
 if(NOT WIN32)
-  message(FATAL_ERROR "CX P02 currently targets Windows only.")
+  message(FATAL_ERROR "CX currently targets Windows only.")
 endif()
 
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -39,18 +41,71 @@ else()
   set(WEBVIEW2_ARCH x86)
 endif()
 
+add_library(sqlite3 STATIC third_party/sqlite/sqlite3.c)
+target_include_directories(sqlite3 PUBLIC third_party/sqlite)
+target_compile_definitions(sqlite3 PRIVATE
+  SQLITE_THREADSAFE=1
+  SQLITE_DQS=0
+  SQLITE_DEFAULT_FOREIGN_KEYS=1)
+if(MSVC)
+  target_compile_options(sqlite3 PRIVATE /W3)
+endif()
+add_library(cx_storage STATIC
+  src/storage/database.cpp
+  src/storage/database.h
+  src/storage/migrations.h)
+target_include_directories(cx_storage PUBLIC src)
+target_link_libraries(cx_storage PUBLIC sqlite3)
+if(MSVC)
+  target_compile_options(cx_storage PRIVATE /W4 /permissive- /EHsc)
+endif()
+
 add_executable(cx WIN32
   src/main.cpp
   src/app_window.cpp
   src/app_window.h)
-
 target_include_directories(cx PRIVATE
   "${WEBVIEW2_ROOT}/build/native/include")
-
 target_link_libraries(cx PRIVATE
+  cx_storage
   "${WEBVIEW2_ROOT}/build/native/${WEBVIEW2_ARCH}/WebView2LoaderStatic.lib"
   user32 ole32 shell32 shlwapi version)
 target_compile_definitions(cx PRIVATE UNICODE _UNICODE)
 if(MSVC)
   target_compile_options(cx PRIVATE /W4 /permissive- /EHsc)
 endif()
+
+add_library(gtest STATIC
+  third_party/googletest/src/gtest-all.cc)
+target_include_directories(gtest
+  PUBLIC third_party/googletest/include
+  PRIVATE third_party/googletest)
+if(MSVC)
+  target_compile_options(gtest PRIVATE /W3)
+endif()
+
+add_library(gtest_main STATIC
+  third_party/googletest/src/gtest_main.cc)
+target_link_libraries(gtest_main PUBLIC gtest)
+add_library(GTest::gtest ALIAS gtest)
+add_library(GTest::gtest_main ALIAS gtest_main)
+
+enable_testing()
+add_executable(storage_tests tests/storage_test.cpp)
+target_link_libraries(storage_tests PRIVATE cx_storage GTest::gtest_main)
+if(MSVC)
+  target_compile_options(storage_tests PRIVATE /W4 /permissive- /EHsc)
+endif()
+
+set_target_properties(storage_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/tests-bin"
+  RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/tests-bin"
+  RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_BINARY_DIR}/tests-bin"
+  RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL "${CMAKE_BINARY_DIR}/tests-bin")
+
+add_custom_command(TARGET storage_tests POST_BUILD
+  COMMAND "${CMAKE_COMMAND}"
+    "-DTEST_FILE=${CMAKE_BINARY_DIR}/CTestTestfile.cmake"
+    "-DTEST_EXE=$<TARGET_FILE:storage_tests>"
+    -P "${CMAKE_SOURCE_DIR}/cmake/write_test_manifest.cmake"
+  VERBATIM)

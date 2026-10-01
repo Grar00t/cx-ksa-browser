@@ -1,28 +1,51 @@
 # Project State
 
 ## Current Status
-Phase: P02 implemented and built on Windows. CMake + native C++20 Win32 + WebView2 skeleton are present on branch `prompt-P02`.
+Phase: P03 implemented on branch `prompt-P03`.
+The Windows shell now opens a local SQLite database before starting the UI.
 
-## Build Commands
+## Storage
+Default path: `%APPDATA%\CX Build\data.db`.
+SQLite 3.53.4 amalgamation is vendored under `third_party/sqlite`.
+GoogleTest 1.18.0 is vendored under `third_party/googletest`.
+
+Schema migration v1 creates:
+- `settings`: local key/value settings.
+- `tabs`: ordered tab/session state.
+- `history`: local browsing history.
+- `schema_migrations`: applied migration versions.
+
+## Transaction Safety
+SQLite is configured with WAL mode, `synchronous=FULL`, foreign keys enabled,
+a 5-second busy timeout, prepared statements for CRUD, transactional migrations,
+and explicit `BEGIN IMMEDIATE / COMMIT / ROLLBACK`.
+`Transaction` rolls back automatically if it leaves scope without commit.
+
+## Build And Test
 `cmake -B build`
-`cmake --build build --config Release`
+`cmake --build build`
+`ctest --output-on-failure`
+
+Or:
 `powershell -ExecutionPolicy Bypass -File scripts/build.ps1`
 
-## P02 Verification
-- PASS: CMake configure completed with Visual Studio 18 2026 / MSVC 19.51.
-- PASS: Release build produced `build/Release/cx.exe`.
-- PASS: runtime window measured exactly 1024x768, title `CX Build - P02`.
-- PASS: a WebView2 child process started and the host code navigates only to `about:blank`; HTTP/HTTPS navigation and new-window requests are blocked by the host.
-- FAIL: zero-network acceptance is not satisfied by the Evergreen WebView2 Runtime on this machine. Its child process established HTTPS connections to Microsoft-owned runtime infrastructure during startup despite background-networking/component-update/sync flags and a sink proxy.
+## Verified On 2026-10-01
+- PASS: CMake configure completed.
+- PASS: Release and Debug storage targets compile.
+- PASS: `build/Release/cx.exe` produced.
+- PASS: `ctest --output-on-failure` passes without requiring `-C`.
+- PASS: GoogleTest direct run: 8 tests, 8 passed.
+- PASS: database exists at `C:\Users\A\AppData\Roaming\CX Build\data.db`.
+- PASS: tables observed: `history`, `schema_migrations`, `settings`, `tabs`.
+- PASS: migration version observed: 1.
+- PASS: journal mode observed: WAL; synchronous setting observed: FULL (2).
+- PASS: 20 repeated storage-test runs showed 0 TCP connections and 0 UDP endpoints.
 
-## Dependency
-Pinned NuGet SDK: `Microsoft.Web.WebView2 1.0.4258.31`. First configure downloads the package into `build/packages`; subsequent configures reuse it.
-
-## Privacy Notes
-CX host code contains no telemetry, analytics, crash upload, cloud sync, or application network client. WebView2 itself follows Windows diagnostic-data behavior, which the host application cannot fully disable.
-
-## Blocker
-Strict acceptance of "no telemetry or network connection" conflicts with using the Evergreen WebView2 Runtime under the current Windows diagnostic/runtime behavior. Meeting that requirement requires either an OS/runtime policy that blocks WebView2 diagnostics or changing the rendering-engine requirement.
+## Known Limitation
+The P03 storage layer itself performs no network I/O. The full `cx.exe` still
+inherits the P02 Evergreen WebView2 Runtime behavior previously observed to make
+Microsoft HTTPS connections during WebView startup. P03 does not claim that
+the full browser process is network-silent.
 
 ## Next Prompt
-P03 after deciding whether WebView2 runtime diagnostic traffic is acceptable or must be eliminated by architecture/policy.
+P04.
