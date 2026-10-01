@@ -3,6 +3,8 @@
 #include "agent/agent_core.h"
 #include "agent/consent_dialog.h"
 #include "agent/permissions.h"
+#include "mcp/allowlist_dialog.h"
+#include "mcp/mcp_client.h"
 
 #include <WebView2EnvironmentOptions.h>
 
@@ -12,19 +14,24 @@ using Microsoft::WRL::Callback;
 
 namespace {
 constexpr wchar_t kWindowClass[] = L"CXBuildWindowClass";
-constexpr wchar_t kWindowTitle[] = L"CX Build - P04";
+constexpr wchar_t kWindowTitle[] = L"CX Build - P05";
 constexpr WORD kAgentStart = 40001;
 constexpr WORD kAgentStop = 40002;
 constexpr WORD kAgentRevokeAll = 40003;
+constexpr WORD kMcpAllowlist = 40101;
 }
 
 AppWindow::AppWindow(
     cx::agent::AgentCore& agent,
     cx::agent::PermissionManager& permissions,
-    cx::agent::ConsentDialog& consent_dialog)
+    cx::agent::ConsentDialog& consent_dialog,
+    cx::mcp::AllowlistDialog& mcp_dialog,
+    cx::mcp::McpClient& mcp_client)
     : agent_(agent),
       permissions_(permissions),
-      consent_dialog_(consent_dialog) {}
+      consent_dialog_(consent_dialog),
+      mcp_dialog_(mcp_dialog),
+      mcp_client_(mcp_client) {}
 
 int AppWindow::Run(HINSTANCE instance, int show_command) {
   const HRESULT com = OleInitialize(nullptr);
@@ -80,9 +87,13 @@ bool AppWindow::Create(HINSTANCE instance, int) {
 void AppWindow::CreateMenus() {
   HMENU menu_bar = CreateMenu();
   HMENU agent_menu = CreatePopupMenu();
-  if (!menu_bar || !agent_menu) {
+  HMENU mcp_menu = CreatePopupMenu();
+  if (!menu_bar || !agent_menu || !mcp_menu) {
     if (agent_menu) {
       DestroyMenu(agent_menu);
+    }
+    if (mcp_menu) {
+      DestroyMenu(mcp_menu);
     }
     if (menu_bar) {
       DestroyMenu(menu_bar);
@@ -99,6 +110,13 @@ void AppWindow::CreateMenus() {
   AppendMenuW(
       menu_bar, MF_POPUP,
       reinterpret_cast<UINT_PTR>(agent_menu), L"Agent");
+
+  AppendMenuW(
+      mcp_menu, MF_STRING, kMcpAllowlist,
+      L"Allowed Servers...");
+  AppendMenuW(
+      menu_bar, MF_POPUP,
+      reinterpret_cast<UINT_PTR>(mcp_menu), L"MCP");
   SetMenu(hwnd_, menu_bar);
 }
 
@@ -117,6 +135,7 @@ void AppWindow::HandleCommand(WORD command) {
   }
 
   if (command == kAgentStop) {
+    mcp_client_.Stop();
     agent_.Stop();
     MessageBoxW(
         hwnd_, L"CX Agent is stopped.",
@@ -137,6 +156,7 @@ void AppWindow::HandleCommand(WORD command) {
       return;
     }
 
+    mcp_client_.Stop();
     agent_.Stop();
     if (permissions_.RevokeAll()) {
       MessageBoxW(
@@ -147,6 +167,11 @@ void AppWindow::HandleCommand(WORD command) {
           hwnd_, L"Permission revocation could not be saved.",
           L"CX Agent Permissions", MB_OK | MB_ICONERROR);
     }
+    return;
+  }
+
+  if (command == kMcpAllowlist) {
+    mcp_dialog_.Show(hwnd_);
   }
 }
 

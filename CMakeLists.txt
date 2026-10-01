@@ -73,6 +73,22 @@ if(MSVC)
   target_compile_options(cx_agent PRIVATE /W4 /permissive- /EHsc)
 endif()
 
+add_library(cx_mcp STATIC
+  src/mcp/mcp_client.cpp
+  src/mcp/mcp_client.h
+  src/mcp/allowlist_manager.cpp
+  src/mcp/allowlist_manager.h
+  src/mcp/rate_limiter.cpp
+  src/mcp/rate_limiter.h
+  src/mcp/allowlist_dialog.cpp
+  src/mcp/allowlist_dialog.h)
+target_include_directories(cx_mcp PUBLIC src)
+target_compile_definitions(cx_mcp PRIVATE UNICODE _UNICODE)
+target_link_libraries(cx_mcp PUBLIC cx_agent user32 comdlg32)
+if(MSVC)
+  target_compile_options(cx_mcp PRIVATE /W4 /permissive- /EHsc)
+endif()
+
 add_executable(cx WIN32
   src/main.cpp
   src/app_window.cpp
@@ -80,7 +96,7 @@ add_executable(cx WIN32
 target_include_directories(cx PRIVATE
   "${WEBVIEW2_ROOT}/build/native/include")
 target_link_libraries(cx PRIVATE
-  cx_agent
+  cx_mcp
   "${WEBVIEW2_ROOT}/build/native/${WEBVIEW2_ARCH}/WebView2LoaderStatic.lib"
   user32 ole32 shell32 shlwapi version)
 target_compile_definitions(cx PRIVATE UNICODE _UNICODE)
@@ -104,10 +120,21 @@ add_library(GTest::gtest ALIAS gtest)
 add_library(GTest::gtest_main ALIAS gtest_main)
 
 enable_testing()
+
+add_executable(mcp_test_server
+  tests/mcp_test_server.cpp)
+set_target_properties(mcp_test_server PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/tests-bin"
+  RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/tests-bin"
+  RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_BINARY_DIR}/tests-bin"
+  RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL "${CMAKE_BINARY_DIR}/tests-bin")
+
 add_executable(storage_tests
   tests/storage_test.cpp
-  tests/agent_test.cpp)
-target_link_libraries(storage_tests PRIVATE cx_agent GTest::gtest_main)
+  tests/agent_test.cpp
+  tests/mcp_test.cpp)
+target_link_libraries(storage_tests PRIVATE cx_mcp GTest::gtest_main)
+add_dependencies(storage_tests mcp_test_server)
 if(MSVC)
   target_compile_options(storage_tests PRIVATE /W4 /permissive- /EHsc)
 endif()

@@ -10,11 +10,18 @@ class ConsentDialog;
 class PermissionManager;
 }
 
+namespace cx::mcp {
+class AllowlistDialog;
+class McpClient;
+}
+
 class AppWindow {
 public:
   AppWindow(cx::agent::AgentCore& agent,
             cx::agent::PermissionManager& permissions,
-            cx::agent::ConsentDialog& consent_dialog);
+            cx::agent::ConsentDialog& consent_dialog,
+            cx::mcp::AllowlistDialog& mcp_dialog,
+            cx::mcp::McpClient& mcp_client);
 
   int Run(HINSTANCE instance, int show_command);
 
@@ -30,6 +37,8 @@ private:
   cx::agent::AgentCore& agent_;
   cx::agent::PermissionManager& permissions_;
   cx::agent::ConsentDialog& consent_dialog_;
+  cx::mcp::AllowlistDialog& mcp_dialog_;
+  cx::mcp::McpClient& mcp_client_;
 
   HWND hwnd_ = nullptr;
   Microsoft::WRL::ComPtr<ICoreWebView2Controller> controller_;
