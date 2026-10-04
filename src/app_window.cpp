@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <string>
+#include <unordered_map>
 #include <utility>
 
 using Microsoft::WRL::Callback;
@@ -40,6 +41,59 @@ constexpr WORD kCloseTab = 41007;
 constexpr WORD kHistory = 41008;
 constexpr WORD kBookmarks = 41009;
 constexpr WORD kSettings = 41010;
+
+constexpr UINT_PTR kAddressSubclassId = 0x43584144;
+constexpr std::size_t kMaxVisibleTabTitle = 28;
+
+std::wstring DisplayTabTitle(
+    std::wstring_view base,
+    std::wstring_view suffix) {
+  std::wstring title =
+      base.empty() ? std::wstring(L"New Tab") : std::wstring(base);
+  const std::size_t reserved = suffix.size();
+  if (title.size() + reserved > kMaxVisibleTabTitle) {
+    const std::size_t room =
+        kMaxVisibleTabTitle > reserved
+            ? kMaxVisibleTabTitle - reserved
+            : 0;
+    if (room > 1) {
+      title.resize(room - 1);
+      title += L"\x2026";
+    } else {
+      title.clear();
+    }
+  }
+  title += suffix;
+  return title;
+}
+
+LRESULT CALLBACK AddressBarSubclassProc(
+    HWND hwnd,
+    UINT message,
+    WPARAM wparam,
+    LPARAM lparam,
+    UINT_PTR,
+    DWORD_PTR) {
+  if (message == WM_SETFOCUS) {
+    const LRESULT result =
+        DefSubclassProc(hwnd, message, wparam, lparam);
+    SendMessageW(hwnd, EM_SETSEL, 0, -1);
+    return result;
+  }
+  if (message == WM_KEYDOWN && wparam == VK_RETURN) {
+    SendMessageW(
+        GetParent(hwnd),
+        WM_COMMAND,
+        MAKEWPARAM(kGo, BN_CLICKED),
+        reinterpret_cast<LPARAM>(hwnd));
+    return 0;
+  }
+  if (message == WM_NCDESTROY) {
+    RemoveWindowSubclass(
+        hwnd, AddressBarSubclassProc, kAddressSubclassId);
+  }
+  return DefSubclassProc(hwnd, message, wparam, lparam);
+}
 
 std::string WideToUtf8(std::wstring_view value) {
   if (value.empty()) return {};
@@ -127,7 +181,7 @@ int AppWindow::Run(HINSTANCE instance, int show_command) {
 bool AppWindow::Create(HINSTANCE instance, int) {
   INITCOMMONCONTROLSEX controls{};
   controls.dwSize = sizeof(controls);
-  controls.dwICC = ICC_TAB_CLASSES;
+  controls.dwICC = ICC_TAB_CLASSES | ICC_WIN95_CLASSES;
   InitCommonControlsEx(&controls);
 
   WNDCLASSEXW window_class{};
@@ -216,7 +270,8 @@ void AppWindow::CreateBrowserControls() {
   tab_strip_ = CreateWindowExW(
       0, WC_TABCONTROLW, L"",
       WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS |
-          TCS_TABS | TCS_SINGLELINE | TCS_OWNERDRAWFIXED,
+          TCS_TABS | TCS_SINGLELINE |
+          TCS_OWNERDRAWFIXED | TCS_FIXEDWIDTH,
       0, 0,
       design::Density::MinimumInputWidth,
       design::Density::TabHeight,
@@ -224,24 +279,24 @@ void AppWindow::CreateBrowserControls() {
   cx::ui::theme::StyleTabControl(tab_strip_);
 
   back_button_ = CreateWindowExW(
-      0, L"BUTTON", L"<",
+      0, L"BUTTON", L"\x2190",
       WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
       0, 0,
-      design::Density::NavigationButtonWidth,
+      design::Density::IconButtonWidth,
       design::Density::ControlHeight,
       hwnd_, reinterpret_cast<HMENU>(kBack), nullptr, nullptr);
   forward_button_ = CreateWindowExW(
-      0, L"BUTTON", L">",
+      0, L"BUTTON", L"\x2192",
       WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
       0, 0,
-      design::Density::NavigationButtonWidth,
+      design::Density::IconButtonWidth,
       design::Density::ControlHeight,
       hwnd_, reinterpret_cast<HMENU>(kForward), nullptr, nullptr);
   reload_button_ = CreateWindowExW(
-      0, L"BUTTON", L"Reload",
+      0, L"BUTTON", L"\x21BB",
       WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
       0, 0,
-      design::Density::ReloadButtonWidth,
+      design::Density::IconButtonWidth,
       design::Density::ControlHeight,
       hwnd_, reinterpret_cast<HMENU>(kReload), nullptr, nullptr);
   address_bar_ = CreateWindowExW(
@@ -252,19 +307,24 @@ void AppWindow::CreateBrowserControls() {
       design::Density::ControlHeight,
       hwnd_, nullptr, nullptr, nullptr);
   cx::ui::theme::StyleBorderedSurface(address_bar_);
+  SetWindowSubclass(
+      address_bar_,
+      AddressBarSubclassProc,
+      kAddressSubclassId,
+      0);
   go_button_ = CreateWindowExW(
-      0, L"BUTTON", L"Go",
+      0, L"BUTTON", L"\x21B5",
       WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
       0, 0,
-      design::Density::GoButtonWidth,
+      design::Density::IconButtonWidth,
       design::Density::ControlHeight,
       hwnd_, reinterpret_cast<HMENU>(kGo), nullptr, nullptr);
   cx::ui::theme::MarkPrimaryAction(go_button_);
   bookmark_button_ = CreateWindowExW(
-      0, L"BUTTON", L"Bookmark",
+      0, L"BUTTON", L"\x2605",
       WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
       0, 0,
-      design::Density::BookmarkButtonWidth,
+      design::Density::IconButtonWidth,
       design::Density::ControlHeight,
       hwnd_, reinterpret_cast<HMENU>(kBookmark), nullptr, nullptr);
   new_tab_button_ = CreateWindowExW(
@@ -275,12 +335,40 @@ void AppWindow::CreateBrowserControls() {
       design::Density::ControlHeight,
       hwnd_, reinterpret_cast<HMENU>(kNewTab), nullptr, nullptr);
   close_tab_button_ = CreateWindowExW(
-      0, L"BUTTON", L"x",
+      0, L"BUTTON", L"\x00D7",
       WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
       0, 0,
       design::Density::IconButtonWidth,
       design::Density::ControlHeight,
       hwnd_, reinterpret_cast<HMENU>(kCloseTab), nullptr, nullptr);
+
+  status_label_ = CreateWindowExW(
+      0, L"STATIC", L"Ready",
+      WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE,
+      0, 0, 100, design::Density::StatusHeight,
+      hwnd_, nullptr, nullptr, nullptr);
+
+  tooltip_ = CreateWindowExW(
+      WS_EX_TOPMOST,
+      TOOLTIPS_CLASSW,
+      nullptr,
+      WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
+      CW_USEDEFAULT, CW_USEDEFAULT,
+      CW_USEDEFAULT, CW_USEDEFAULT,
+      hwnd_, nullptr, nullptr, nullptr);
+  if (tooltip_) {
+    SetWindowPos(
+        tooltip_, HWND_TOPMOST,
+        0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    AddTooltip(back_button_, L"Back");
+    AddTooltip(forward_button_, L"Forward");
+    AddTooltip(reload_button_, L"Reload");
+    AddTooltip(go_button_, L"Navigate");
+    AddTooltip(bookmark_button_, L"Save bookmark locally");
+    AddTooltip(new_tab_button_, L"New tab");
+    AddTooltip(close_tab_button_, L"Close tab");
+  }
 
   SendMessageW(
       address_bar_,
@@ -304,7 +392,11 @@ void AppWindow::HandleCommand(WORD command) {
       RefreshBrowserChrome();
       return;
     case kReload:
-      navigation_.Reload();
+      if (navigation_.Reload()) {
+        SetBrowserStatus(L"Loading...");
+      } else {
+        SetBrowserStatus(L"Reload unavailable");
+      }
       return;
     case kGo:
       NavigateAddressBar();
@@ -409,38 +501,36 @@ void AppWindow::LayoutControls() {
   const int tab_height = design::Density::TabHeight;
   const int toolbar_y =
       tab_height + design::Spacing::Xxs;
-  const int toolbar_height =
-      design::Density::ToolbarHeight;
-  const int content_y =
-      toolbar_y + toolbar_height + design::Spacing::Xs;
   const int control_height =
       design::Density::ControlHeight;
   const int gap = design::Spacing::Sm;
+  const int button_width =
+      design::Density::IconButtonWidth;
+  const int status_y =
+      toolbar_y + control_height + design::Spacing::Xxs;
+  const int content_y =
+      status_y + design::Density::StatusHeight +
+      design::Spacing::Xxs;
 
   MoveWindow(tab_strip_, 0, 0, width, tab_height, TRUE);
 
   int x = design::Spacing::Sm;
   MoveWindow(
       back_button_, x, toolbar_y,
-      design::Density::NavigationButtonWidth,
-      control_height, TRUE);
-  x += design::Density::NavigationButtonWidth + gap;
+      button_width, control_height, TRUE);
+  x += button_width + gap;
   MoveWindow(
       forward_button_, x, toolbar_y,
-      design::Density::NavigationButtonWidth,
-      control_height, TRUE);
-  x += design::Density::NavigationButtonWidth + gap;
+      button_width, control_height, TRUE);
+  x += button_width + gap;
   MoveWindow(
       reload_button_, x, toolbar_y,
-      design::Density::ReloadButtonWidth,
-      control_height, TRUE);
-  x += design::Density::ReloadButtonWidth + gap;
+      button_width, control_height, TRUE);
+  x += button_width + gap;
 
   const int right_fixed =
-      design::Density::GoButtonWidth + gap +
-      design::Density::BookmarkButtonWidth + gap +
-      design::Density::IconButtonWidth + gap +
-      design::Density::IconButtonWidth +
+      (4 * button_width) +
+      (3 * gap) +
       design::Spacing::Lg;
   const int requested_address_width =
       width - x - right_fixed;
@@ -453,25 +543,29 @@ void AppWindow::LayoutControls() {
       address_bar_, x, toolbar_y,
       address_width, control_height, TRUE);
   x += address_width + gap;
-  MoveWindow(
-      go_button_, x, toolbar_y,
-      design::Density::GoButtonWidth,
-      control_height, TRUE);
-  x += design::Density::GoButtonWidth + gap;
-  MoveWindow(
-      bookmark_button_, x, toolbar_y,
-      design::Density::BookmarkButtonWidth,
-      control_height, TRUE);
-  x += design::Density::BookmarkButtonWidth + gap;
-  MoveWindow(
-      new_tab_button_, x, toolbar_y,
-      design::Density::IconButtonWidth,
-      control_height, TRUE);
-  x += design::Density::IconButtonWidth + gap;
-  MoveWindow(
-      close_tab_button_, x, toolbar_y,
-      design::Density::IconButtonWidth,
-      control_height, TRUE);
+
+  for (HWND button : {
+           go_button_,
+           bookmark_button_,
+           new_tab_button_,
+           close_tab_button_}) {
+    MoveWindow(
+        button, x, toolbar_y,
+        button_width, control_height, TRUE);
+    x += button_width + gap;
+  }
+
+  if (status_label_) {
+    MoveWindow(
+        status_label_,
+        design::Spacing::Md,
+        status_y,
+        width > (2 * design::Spacing::Md)
+            ? width - (2 * design::Spacing::Md)
+            : 0,
+        design::Density::StatusHeight,
+        TRUE);
+  }
 
   if (controller_) {
     RECT bounds{0, content_y, width, height};
@@ -492,17 +586,33 @@ void AppWindow::RefreshBrowserChrome() {
 void AppWindow::RefreshTabs() {
   if (!tab_strip_) return;
 
+  std::unordered_map<std::wstring, int> totals;
+  for (const auto& tab : tabs_.tabs()) {
+    const std::wstring base = Utf8ToWide(
+        tab.title.empty() ? std::string_view("New Tab")
+                          : std::string_view(tab.title));
+    ++totals[base.empty() ? std::wstring(L"New Tab") : base];
+  }
+
+  std::unordered_map<std::wstring, int> seen;
   TabCtrl_DeleteAllItems(tab_strip_);
   int selected = -1;
   int index = 0;
   for (const auto& tab : tabs_.tabs()) {
-    std::wstring title = Utf8ToWide(
+    std::wstring base = Utf8ToWide(
         tab.title.empty() ? std::string_view("New Tab")
                           : std::string_view(tab.title));
-    if (title.size() > 36) {
-      title.resize(33);
-      title += L"...";
+    if (base.empty()) {
+      base = L"New Tab";
     }
+
+    std::wstring suffix;
+    const auto total = totals.find(base);
+    if (total != totals.end() && total->second > 1) {
+      const int ordinal = ++seen[base];
+      suffix = L" · " + std::to_wstring(ordinal);
+    }
+    std::wstring title = DisplayTabTitle(base, suffix);
 
     TCITEMW item{};
     item.mask = TCIF_TEXT | TCIF_PARAM;
@@ -519,8 +629,8 @@ void AppWindow::RefreshTabs() {
   if (selected >= 0) {
     TabCtrl_SetCurSel(tab_strip_, selected);
   }
+  InvalidateRect(tab_strip_, nullptr, TRUE);
 }
-
 void AppWindow::RefreshAddressBar() {
   if (!address_bar_) return;
   const auto active = tabs_.active_tab();
@@ -530,6 +640,48 @@ void AppWindow::RefreshAddressBar() {
   }
   const std::wstring url = Utf8ToWide(active->url);
   SetWindowTextW(address_bar_, url.c_str());
+}
+
+void AppWindow::RefreshAddressFromWebView() {
+  if (!webview_ || !address_bar_) {
+    return;
+  }
+  LPWSTR source = nullptr;
+  if (FAILED(webview_->get_Source(&source)) || !source) {
+    return;
+  }
+  const std::wstring canonical(source);
+  CoTaskMemFree(source);
+  if (cx::browser::NavigationController::IsAllowedUrl(canonical)) {
+    SetWindowTextW(address_bar_, canonical.c_str());
+  }
+}
+
+void AppWindow::SetBrowserStatus(std::wstring_view text) {
+  if (!status_label_) {
+    return;
+  }
+  const std::wstring owned(text);
+  SetWindowTextW(status_label_, owned.c_str());
+}
+
+void AppWindow::AddTooltip(
+    HWND control,
+    const wchar_t* text) {
+  if (!tooltip_ || !control || !text) {
+    return;
+  }
+  TOOLINFOW info{};
+  info.cbSize = sizeof(info);
+  info.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+  info.hwnd = hwnd_;
+  info.uId = reinterpret_cast<UINT_PTR>(control);
+  info.lpszText = const_cast<wchar_t*>(text);
+  SendMessageW(
+      tooltip_,
+      TTM_ADDTOOLW,
+      0,
+      reinterpret_cast<LPARAM>(&info));
 }
 
 void AppWindow::NavigateAddressBar() {
@@ -547,9 +699,11 @@ void AppWindow::NavigateAddressBar() {
 
   if (!navigation_.NavigateAddress(value)) {
     MessageBeep(MB_ICONWARNING);
+    SetBrowserStatus(L"Blocked: unsupported or unsafe address");
     RefreshAddressBar();
     return;
   }
+  SetBrowserStatus(L"Loading...");
   RefreshBrowserChrome();
 }
 
@@ -563,6 +717,7 @@ void AppWindow::NewTab() {
   }
 
   RefreshBrowserChrome();
+  SetBrowserStatus(L"New tab ready");
   if (webview_) {
     navigation_.ActivateTab(*id);
   }
@@ -581,6 +736,7 @@ void AppWindow::CloseActiveTab() {
 
   navigation_.ForgetTab(closing);
   RefreshBrowserChrome();
+  SetBrowserStatus(L"Tab closed");
   if (webview_) {
     navigation_.ActivateTab(tabs_.active_tab_id());
   }
@@ -608,6 +764,7 @@ void AppWindow::BookmarkCurrent() {
       active->url.empty() ||
       active->url == "about:blank") {
     MessageBeep(MB_ICONWARNING);
+    SetBrowserStatus(L"Nothing to bookmark on this tab");
     return;
   }
 
@@ -621,10 +778,13 @@ void AppWindow::BookmarkCurrent() {
   }
 
   bookmarks_dialog_.RefreshIfOpen();
+  SetBrowserStatus(L"Bookmark saved locally");
 }
 
 void AppWindow::OpenLibraryUrl(std::string url) {
-  navigation_.NavigateUrl(url);
+  if (navigation_.NavigateUrl(url)) {
+    SetBrowserStatus(L"Loading...");
+  }
   RefreshBrowserChrome();
 }
 
@@ -672,13 +832,26 @@ void AppWindow::InitializeWebView() {
 
                           controller_ = controller;
                           controller_->get_CoreWebView2(&webview_);
+
+                          Microsoft::WRL::ComPtr<
+                              ICoreWebView2Controller2> controller2;
+                          if (SUCCEEDED(controller_.As(&controller2))) {
+                            const COLORREF background =
+                                design::Color::Background;
+                            const COREWEBVIEW2_COLOR color{
+                                static_cast<BYTE>(255),
+                                static_cast<BYTE>(background & 0xFFu),
+                                static_cast<BYTE>((background >> 8) & 0xFFu),
+                                static_cast<BYTE>((background >> 16) & 0xFFu)};
+                            controller2->put_DefaultBackgroundColor(color);
+                          }
                           LayoutControls();
 
                           EventRegistrationToken starting_token{};
                           webview_->add_NavigationStarting(
                               Callback<
                                   ICoreWebView2NavigationStartingEventHandler>(
-                                  [](ICoreWebView2*,
+                                  [this](ICoreWebView2*,
                                      ICoreWebView2NavigationStartingEventArgs* args)
                                       -> HRESULT {
                                     LPWSTR uri = nullptr;
@@ -689,11 +862,29 @@ void AppWindow::InitializeWebView() {
                                       CoTaskMemFree(uri);
                                       if (!allowed) {
                                         args->put_Cancel(TRUE);
+                                        SetBrowserStatus(
+                                            L"Blocked unsafe navigation");
+                                      } else {
+                                        SetBrowserStatus(L"Loading...");
                                       }
                                     }
                                     return S_OK;
                                   }).Get(),
                               &starting_token);
+
+
+                          EventRegistrationToken source_token{};
+                          webview_->add_SourceChanged(
+                              Callback<
+                                  ICoreWebView2SourceChangedEventHandler>(
+                                  [this](
+                                      ICoreWebView2*,
+                                      ICoreWebView2SourceChangedEventArgs*)
+                                      -> HRESULT {
+                                    RefreshAddressFromWebView();
+                                    return S_OK;
+                                  }).Get(),
+                              &source_token);
 
                           EventRegistrationToken completed_token{};
                           webview_->add_NavigationCompleted(
@@ -774,7 +965,34 @@ void AppWindow::HandleNavigationCompleted(
 
   navigation_.OnNavigationCompleted(
       success != FALSE, source_utf8, title_utf8);
+
+  if (success != FALSE && source_utf8 == "about:blank") {
+    const COLORREF background = design::Color::Background;
+    std::wstring script =
+        L"document.documentElement.style.background='rgb(";
+    script += std::to_wstring(
+        static_cast<unsigned int>(background & 0xFFu));
+    script += L",";
+    script += std::to_wstring(
+        static_cast<unsigned int>((background >> 8) & 0xFFu));
+    script += L",";
+    script += std::to_wstring(
+        static_cast<unsigned int>((background >> 16) & 0xFFu));
+    script +=
+        L")';document.body.style.background='inherit';"
+        L"document.body.style.margin='0';"
+        L"document.documentElement.style.colorScheme='dark';";
+    webview_->ExecuteScript(script.c_str(), nullptr);
+  }
+
   RefreshBrowserChrome();
+  if (success == FALSE) {
+    SetBrowserStatus(L"Error: page could not be loaded");
+  } else if (source_utf8 == "about:blank") {
+    SetBrowserStatus(L"Local new tab");
+  } else {
+    SetBrowserStatus(L"Ready");
+  }
 }
 
 void AppWindow::HandleNewWindow(

@@ -66,6 +66,9 @@ private:
   void RefreshBrowserChrome();
   void RefreshTabs();
   void RefreshAddressBar();
+  void RefreshAddressFromWebView();
+  void SetBrowserStatus(std::wstring_view text);
+  void AddTooltip(HWND control, const wchar_t* text);
 
   void NavigateAddressBar();
   void NewTab();
@@ -102,6 +105,8 @@ private:
   HWND bookmark_button_ = nullptr;
   HWND new_tab_button_ = nullptr;
   HWND close_tab_button_ = nullptr;
+  HWND status_label_ = nullptr;
+  HWND tooltip_ = nullptr;
 
   Microsoft::WRL::ComPtr<ICoreWebView2Controller> controller_;
   Microsoft::WRL::ComPtr<ICoreWebView2> webview_;

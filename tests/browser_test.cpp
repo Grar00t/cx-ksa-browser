@@ -116,6 +116,28 @@ TEST_F(BrowserTest, SessionRestoresImmediatelyPersistedTabsAfterReopen) {
   EXPECT_EQ(active->title, "Two Final");
 }
 
+
+TEST_F(BrowserTest, ClosingActiveMiddleTabActivatesRightNeighbor) {
+  cx::browser::TabManager tabs(*database_);
+  ASSERT_TRUE(tabs.Restore());
+
+  const auto middle = tabs.CreateTab(
+      "https://middle.test", "Middle");
+  const auto right = tabs.CreateTab(
+      "https://right.test", "Right");
+  ASSERT_TRUE(middle.has_value());
+  ASSERT_TRUE(right.has_value());
+
+  ASSERT_TRUE(tabs.ActivateTab(*middle));
+  ASSERT_EQ(tabs.active_tab_id(), *middle);
+
+  ASSERT_TRUE(tabs.CloseTab(*middle));
+  EXPECT_EQ(tabs.active_tab_id(), *right);
+  ASSERT_TRUE(tabs.active_tab().has_value());
+  EXPECT_EQ(tabs.active_tab()->title, "Right");
+  EXPECT_EQ(tabs.tabs().size(), 2u);
+}
+
 TEST_F(BrowserTest, SupportsMoreThanTenTabsAndReturnsToOne) {
   cx::browser::TabManager tabs(*database_);
   ASSERT_TRUE(tabs.Restore());

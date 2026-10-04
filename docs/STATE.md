@@ -1,7 +1,7 @@
 # Project State
 
 ## Current Status
-Phase: P11 design-system work is verified locally on `prompt-P11-design-system`, based on the prior Najdi UI branch without merging to `main`.
+Phase: P12 browser-chrome work is verified locally on `prompt-P12-browser-chrome`, based on P11 without merging to `main`.
 
 CX now includes final user/developer documentation, real screenshots, expanded unit/integration/UI/security/performance tests, an enforced line-coverage gate, Windows packaging, portable packaging, and a GitHub Actions workflow.
 
@@ -22,6 +22,38 @@ Developer-facing:
 Screenshots:
 - `docs/screenshots/cx-main.png`.
 - `docs/screenshots/settings-privacy.png`.
+
+## P12 Browser Chrome
+Verified on `prompt-P12-browser-chrome`:
+- browser header/tab strip continues to use `src/ui/design_tokens.h` and the Najdi native theme; tab items use a fixed compact token width and active-tab sand emphasis
+- duplicate visible tab titles receive deterministic ordinals (for example, `New Tab · 1`, `New Tab · 2`) and are truncated with a single ellipsis
+- the existing `TabManager::CloseTab` right-neighbor behavior is now covered by `BrowserTest.ClosingActiveMiddleTabActivatesRightNeighbor`
+- address bar selects the canonical URL on focus, Enter triggers navigation, and WebView2 source changes refresh the displayed canonical source
+- unsafe address input still goes through the existing `NavigationController` policy; an executed UI probe changed the input to `javascript:alert(1)` and observed `ADDRESS=about:blank`, `STATUS=Blocked: unsupported or unsafe address`, and selection `0,11`
+- a compact visible status line reports loading, blocked navigation, load error, ready/new-tab state, tab close, and local bookmark feedback
+- browser actions are compact icon-only native buttons with local Win32 tooltips
+- WebView2 default background uses the design-system warm charcoal, and successful `about:blank` completion applies the same token-derived background in-document
+- WebView2 architecture, local SQLite session/history/bookmark storage, Agent/MCP boundaries, and navigation policy were preserved
+- visual inspection of a locally built 1024x768 shell with two blank tabs showed unique tab labels, obvious active state, selected `about:blank`, compact action buttons, visible `Local new tab` status, and warm-charcoal viewport
+- added-line scan found no Perplexity/Comet/Chromium/CRX references and no telemetry/analytics/crash-upload/remote-update/cloud-sync references
+
+Executed commands:
+- `cmake -S . -B build`
+- `cmake --build build --config Release`
+- `ctest --test-dir build -C Release --output-on-failure`
+- `.\build\tests-bin\storage_tests.exe --gtest_filter='BrowserTest.*:NavigationAddressTest.*:PerformanceTest.*'`
+
+P12 verification results on 2026-10-04:
+- PASS: Release build produced `build/Release/cx.exe`; only the existing MSB8029 environment warning remained
+- PASS: CTest 1/1
+- PASS: targeted GoogleTest 15/15 from 3 suites
+- PASS: BrowserTest 12/12, including session restore, abrupt-exit restore, and active-middle-tab neighbor activation
+- PASS: NavigationAddressTest 1/1
+- PASS: PerformanceTest 2/2
+- New-tab P95: 2.3465 ms, threshold <100 ms
+- BrowserTest maximum observed new-tab creation: 2.7664 ms
+- 100 config save/load round trips: 181.581 ms
+- P12 coverage gate: NOT_RUN; the latest separately verified coverage result remains the P11 80.92% gate below
 
 ## P11 Design System
 Verified on `prompt-P11-design-system`:

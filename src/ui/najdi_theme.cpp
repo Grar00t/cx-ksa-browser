@@ -322,6 +322,10 @@ void StyleTabControl(HWND tabs) noexcept {
   if (!tabs) {
     return;
   }
+  TabCtrl_SetItemSize(
+      tabs,
+      design::Density::TabItemWidth,
+      design::Density::ControlHeight);
   SetWindowSubclass(
       tabs,
       TabSubclassProc,

@@ -54,7 +54,9 @@ struct Focus final {
 struct Density final {
   static constexpr int ControlHeight = 30;
   static constexpr int TabHeight = 34;
+  static constexpr int TabItemWidth = 168;
   static constexpr int ToolbarHeight = 34;
+  static constexpr int StatusHeight = 22;
   static constexpr int IconButtonWidth = 34;
   static constexpr int NavigationButtonWidth = 36;
   static constexpr int ReloadButtonWidth = 60;
