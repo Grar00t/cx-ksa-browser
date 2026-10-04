@@ -353,4 +353,111 @@ TEST(McpAllowlistDefaultPath, UsesAppDataConfigDirectory) {
       expected);
 }
 
+
+TEST_F(McpTest, AllowlistValidationRejectsUnsafeShapes) {
+  auto valid = EchoServer("valid.server-1");
+  EXPECT_TRUE(
+      cx::mcp::AllowlistManager::ValidateServer(valid));
+
+  auto invalid = valid;
+  invalid.id.clear();
+  EXPECT_FALSE(
+      cx::mcp::AllowlistManager::ValidateServer(invalid));
+
+  invalid = valid;
+  invalid.id = "bad id";
+  EXPECT_FALSE(
+      cx::mcp::AllowlistManager::ValidateServer(invalid));
+
+  invalid = valid;
+  invalid.id = std::string(65, 'x');
+  EXPECT_FALSE(
+      cx::mcp::AllowlistManager::ValidateServer(invalid));
+
+  invalid = valid;
+  invalid.command.clear();
+  EXPECT_FALSE(
+      cx::mcp::AllowlistManager::ValidateServer(invalid));
+
+  invalid = valid;
+  invalid.command = "relative.exe";
+  EXPECT_FALSE(
+      cx::mcp::AllowlistManager::ValidateServer(invalid));
+
+  invalid = valid;
+  invalid.command =
+      WideToUtf8((root_ / "server.txt").wstring());
+  EXPECT_FALSE(
+      cx::mcp::AllowlistManager::ValidateServer(invalid));
+
+  invalid = valid;
+  invalid.args.assign(65, "x");
+  EXPECT_FALSE(
+      cx::mcp::AllowlistManager::ValidateServer(invalid));
+
+  invalid = valid;
+  invalid.args = {std::string(8193, 'x')};
+  EXPECT_FALSE(
+      cx::mcp::AllowlistManager::ValidateServer(invalid));
+
+  invalid = valid;
+  invalid.args = {std::string("a\0b", 3)};
+  EXPECT_FALSE(
+      cx::mcp::AllowlistManager::ValidateServer(invalid));
+}
+
+TEST_F(McpTest, AllowlistUpdateSortFindAndRemoveAreDeterministic) {
+  auto zeta = EchoServer("zeta");
+  zeta.args = {"first"};
+  auto alpha = EchoServer("alpha");
+
+  ASSERT_TRUE(allowlist_->AddOrUpdate(zeta));
+  ASSERT_TRUE(allowlist_->AddOrUpdate(alpha));
+
+  auto rows = allowlist_->List();
+  ASSERT_EQ(rows.size(), 2u);
+  EXPECT_EQ(rows[0].id, "alpha");
+  EXPECT_EQ(rows[1].id, "zeta");
+  EXPECT_FALSE(allowlist_->Find("missing").has_value());
+
+  zeta.args = {"updated"};
+  ASSERT_TRUE(allowlist_->AddOrUpdate(zeta));
+  const auto updated = allowlist_->Find("zeta");
+  ASSERT_TRUE(updated.has_value());
+  ASSERT_EQ(updated->args.size(), 1u);
+  EXPECT_EQ(updated->args[0], "updated");
+
+  EXPECT_FALSE(allowlist_->Remove("missing"));
+  EXPECT_TRUE(allowlist_->Remove("alpha"));
+  EXPECT_FALSE(allowlist_->IsAllowed("alpha"));
+}
+
+TEST_F(McpTest, MalformedAllowlistVariantsFailClosed) {
+  const std::vector<std::string> invalid_json = {
+      R"({"version":2,"servers":[]})",
+      R"({"version":1})",
+      R"({"servers":[]})",
+      R"({"version":1,"servers":[],"extra":1})",
+      R"({"version":1,"servers":[{"id":"x","command":"C:\\x.exe"}]})",
+      R"({"version":1,"servers":[{"id":"x","command":"C:\\x.exe","args":[]},{"id":"x","command":"C:\\x.exe","args":[]}]})",
+      R"({"version":1,"servers":[{"id":"bad id","command":"C:\\x.exe","args":[]}]})",
+      "{\"version\":1,\"servers\":[],}"
+  };
+
+  for (std::size_t i = 0;
+       i < invalid_json.size();
+       ++i) {
+    const auto path =
+        root_ / "config" /
+        ("invalid-" + std::to_string(i) + ".json");
+    {
+      std::ofstream output(path, std::ios::binary);
+      output << invalid_json[i];
+    }
+    cx::mcp::AllowlistManager manager(path);
+    EXPECT_FALSE(manager.Load()) << "case " << i;
+    EXPECT_TRUE(manager.List().empty());
+  }
+}
+
 }  // namespace

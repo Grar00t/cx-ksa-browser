@@ -21,7 +21,7 @@ using Microsoft::WRL::Callback;
 
 namespace {
 constexpr wchar_t kWindowClass[] = L"CXBuildWindowClass";
-constexpr wchar_t kWindowTitle[] = L"CX Build - P07";
+constexpr wchar_t kWindowTitle[] = L"CX Build";
 
 constexpr WORD kAgentStart = 40001;
 constexpr WORD kAgentStop = 40002;

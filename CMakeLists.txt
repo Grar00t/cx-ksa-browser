@@ -196,8 +196,15 @@ add_executable(storage_tests
   tests/mcp_test.cpp
   tests/browser_test.cpp
   tests/ui_test.cpp
-  tests/config_test.cpp)
-target_link_libraries(storage_tests PRIVATE cx_ui cx_config GTest::gtest_main)
+  tests/config_test.cpp
+  tests/integration_test.cpp
+  tests/security_test.cpp
+  tests/performance_test.cpp)
+target_link_libraries(storage_tests PRIVATE
+  cx_ui
+  cx_config
+  GTest::gtest_main
+  iphlpapi)
 add_dependencies(storage_tests mcp_test_server browser_crash_writer)
 if(MSVC)
   target_compile_options(storage_tests PRIVATE /W4 /permissive- /EHsc)

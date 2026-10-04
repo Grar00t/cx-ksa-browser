@@ -27,3 +27,4 @@ secrets/
 *.dll
 *.lib
 *.ilk
+coverage/

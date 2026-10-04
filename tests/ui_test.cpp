@@ -1,7 +1,9 @@
 #include "agent/agent_core.h"
 #include "agent/permissions.h"
+#include "browser/bookmark_service.h"
 #include "browser/history_service.h"
 #include "browser/tab_manager.h"
+#include "mcp/allowlist_dialog.h"
 #include "mcp/allowlist_manager.h"
 #include "mcp/mcp_client.h"
 #include "mcp/rate_limiter.h"
@@ -12,10 +14,12 @@
 #include <gtest/gtest.h>
 
 #include <windows.h>
+#include <commctrl.h>
 
 #include <atomic>
 #include <chrono>
 #include <filesystem>
+#include <thread>
 #include <fstream>
 #include <iterator>
 #include <memory>
@@ -201,6 +205,362 @@ TEST_F(PrivacyUiTest, LocalSizeRefreshDoesNotBlockUiThread) {
           .count();
 
   EXPECT_LT(elapsed, 100.0);
+}
+
+
+TEST_F(PrivacyUiTest, SettingsWindowCreatesFourPagesAndPersistsToggle) {
+  UiFakePrompt prompt;
+  cx::agent::PermissionManager permissions(
+      *database_, prompt);
+  cx::agent::LocalLogger logger(
+      root_ / "logs" / "settings.log");
+  ASSERT_TRUE(logger.Open());
+  cx::agent::AgentCore agent(permissions, logger);
+
+  cx::mcp::AllowlistManager allowlist(
+      root_ / "config" / "mcp_allowlist.json");
+  ASSERT_TRUE(allowlist.Load());
+  cx::mcp::RateLimiter limiter(10);
+  cx::mcp::McpClient client(
+      agent, allowlist, limiter, logger);
+  cx::mcp::AllowlistDialog allowlist_dialog(
+      allowlist, client);
+  cx::browser::HistoryService history(*database_);
+  cx::browser::BookmarkService bookmarks(*database_);
+
+  cx::ui::SettingsWindow window(
+      *database_, permissions, agent,
+      allowlist, allowlist_dialog, client,
+      history, bookmarks);
+
+  window.Show(nullptr);
+  HWND hwnd = FindWindowW(
+      L"CXBuildSettingsWindow",
+      L"CX Settings & Privacy");
+  ASSERT_NE(hwnd, nullptr);
+
+  HWND tabs = FindWindowExW(
+      hwnd, nullptr, WC_TABCONTROLW, nullptr);
+  ASSERT_NE(tabs, nullptr);
+  EXPECT_EQ(TabCtrl_GetItemCount(tabs), 4);
+
+  HWND privacy = FindWindowExW(
+      hwnd, nullptr, L"BUTTON",
+      L"Save browsing history locally");
+  ASSERT_NE(privacy, nullptr);
+  SendMessageW(
+      privacy, BM_SETCHECK, BST_CHECKED, 0);
+  SendMessageW(
+      hwnd, WM_COMMAND,
+      MAKEWPARAM(6001, BN_CLICKED),
+      reinterpret_cast<LPARAM>(privacy));
+  EXPECT_EQ(
+      database_->GetSetting(
+          "privacy.save_history").value_or(""),
+      "1");
+
+  HWND agent_run = FindWindowExW(
+      hwnd, nullptr, L"BUTTON",
+      L"Start the agent  [agent.run]");
+  ASSERT_NE(agent_run, nullptr);
+  SendMessageW(
+      agent_run, BM_SETCHECK, BST_CHECKED, 0);
+  SendMessageW(
+      hwnd, WM_COMMAND,
+      MAKEWPARAM(6100, BN_CLICKED),
+      reinterpret_cast<LPARAM>(agent_run));
+  EXPECT_TRUE(permissions.IsGranted(
+      cx::agent::Capability::AgentRun));
+
+  for (int index = 0; index < 4; ++index) {
+    TabCtrl_SetCurSel(tabs, index);
+    NMHDR header{};
+    header.hwndFrom = tabs;
+    header.code = TCN_SELCHANGE;
+    SendMessageW(
+        hwnd, WM_NOTIFY, 0,
+        reinterpret_cast<LPARAM>(&header));
+  }
+
+  SendMessageW(
+      hwnd, WM_COMMAND,
+      MAKEWPARAM(6203, BN_CLICKED), 0);
+  SendMessageW(
+      hwnd, WM_COMMAND,
+      MAKEWPARAM(6303, BN_CLICKED), 0);
+
+  RECT before{};
+  ASSERT_TRUE(GetWindowRect(hwnd, &before));
+  SetWindowPos(
+      hwnd, nullptr,
+      before.left, before.top,
+      760, 620,
+      SWP_NOZORDER | SWP_NOACTIVATE);
+  SendMessageW(hwnd, WM_SIZE, 0, 0);
+
+  window.Refresh();
+
+  SendMessageW(hwnd, WM_CLOSE, 0, 0);
+  EXPECT_FALSE(IsWindowVisible(hwnd));
+
+  DestroyWindow(hwnd);
+}
+
+
+
+TEST_F(PrivacyUiTest, DashboardAcceptsSizeAndFormatsUnits) {
+  UiFakePrompt prompt;
+  cx::agent::PermissionManager permissions(
+      *database_, prompt);
+  ASSERT_TRUE(permissions.SetGranted(
+      cx::agent::Capability::ReadPage, true));
+  ASSERT_TRUE(permissions.SetGranted(
+      cx::agent::Capability::ManageTabs, true));
+
+  cx::agent::LocalLogger logger(
+      root_ / "logs" / "dashboard-units.log");
+  ASSERT_TRUE(logger.Open());
+  cx::agent::AgentCore agent(permissions, logger);
+  cx::mcp::AllowlistManager allowlist(
+      root_ / "config" / "dashboard-allowlist.json");
+  ASSERT_TRUE(allowlist.Load());
+  cx::mcp::RateLimiter limiter(10);
+  cx::mcp::McpClient client(
+      agent, allowlist, limiter, logger);
+
+  cx::ui::PrivacyDashboard dashboard(
+      permissions, allowlist, client, root_);
+
+  EXPECT_FALSE(dashboard.AcceptLocalSizeResult(0));
+  EXPECT_FALSE(dashboard.local_size().has_value());
+  EXPECT_EQ(dashboard.local_root(), root_);
+
+  for (const auto bytes : {
+           std::uintmax_t{512},
+           std::uintmax_t{2048},
+           std::uintmax_t{3} * 1024 * 1024,
+           std::uintmax_t{4} * 1024 * 1024 * 1024}) {
+    auto* value = new std::uintmax_t(bytes);
+    ASSERT_TRUE(dashboard.AcceptLocalSizeResult(
+        reinterpret_cast<LPARAM>(value)));
+    ASSERT_TRUE(dashboard.local_size().has_value());
+    EXPECT_EQ(*dashboard.local_size(), bytes);
+    const auto summary = dashboard.Summary();
+    EXPECT_NE(
+        summary.find(L"Enabled permissions: 2"),
+        std::wstring::npos);
+    EXPECT_EQ(
+        summary.find(L"calculating..."),
+        std::wstring::npos);
+  }
+
+  EXPECT_NE(
+      dashboard.Summary().find(L"4.00 GiB"),
+      std::wstring::npos);
+}
+
+TEST_F(PrivacyUiTest, AllowlistDialogExercisesSelectionConnectAndRemove) {
+  UiFakePrompt prompt;
+  cx::agent::PermissionManager permissions(
+      *database_, prompt);
+  cx::agent::LocalLogger logger(
+      root_ / "logs" / "allowlist-actions.log");
+  ASSERT_TRUE(logger.Open());
+  cx::agent::AgentCore agent(permissions, logger);
+
+  cx::mcp::AllowlistManager allowlist(
+      root_ / "config" / "actions-allowlist.json");
+  ASSERT_TRUE(allowlist.Load());
+
+  wchar_t module[32768]{};
+  const DWORD length = GetModuleFileNameW(
+      nullptr, module,
+      static_cast<DWORD>(std::size(module)));
+  ASSERT_GT(length, 0u);
+  const std::wstring module_path(module, length);
+
+  const int utf8_size = WideCharToMultiByte(
+      CP_UTF8, WC_ERR_INVALID_CHARS,
+      module_path.data(),
+      static_cast<int>(module_path.size()),
+      nullptr, 0, nullptr, nullptr);
+  ASSERT_GT(utf8_size, 0);
+
+  cx::mcp::ServerConfig server;
+  server.id = "ui-actions";
+  server.command.resize(
+      static_cast<std::size_t>(utf8_size));
+  ASSERT_EQ(
+      WideCharToMultiByte(
+          CP_UTF8, WC_ERR_INVALID_CHARS,
+          module_path.data(),
+          static_cast<int>(module_path.size()),
+          server.command.data(), utf8_size,
+          nullptr, nullptr),
+      utf8_size);
+  ASSERT_TRUE(allowlist.AddOrUpdate(server));
+
+  cx::mcp::RateLimiter limiter(10);
+  cx::mcp::McpClient client(
+      agent, allowlist, limiter, logger);
+  cx::mcp::AllowlistDialog dialog(
+      allowlist, client);
+
+  std::thread ui_thread([&] {
+    dialog.Show(nullptr);
+  });
+
+  HWND hwnd = nullptr;
+  HWND list = nullptr;
+  for (int attempt = 0;
+       attempt < 200 && (!hwnd || !list);
+       ++attempt) {
+    hwnd = FindWindowW(
+        L"CXBuildMcpAllowlistDialog",
+        L"CX MCP Allowlist");
+    if (hwnd) {
+      list = FindWindowExW(
+          hwnd, nullptr, L"LISTBOX", nullptr);
+    }
+    if (!hwnd || !list) {
+      Sleep(10);
+    }
+  }
+
+  ASSERT_NE(hwnd, nullptr);
+  ASSERT_NE(list, nullptr);
+  ASSERT_EQ(
+      SendMessageW(list, LB_GETCOUNT, 0, 0),
+      1);
+
+  PostMessageW(
+      hwnd, WM_COMMAND,
+      MAKEWPARAM(5103, BN_CLICKED), 0);
+  Sleep(50);
+
+  SendMessageW(
+      list, LB_SETCURSEL, 0, 0);
+  PostMessageW(
+      hwnd, WM_COMMAND,
+      MAKEWPARAM(5103, BN_CLICKED), 0);
+  Sleep(50);
+  EXPECT_FALSE(client.IsRunning());
+
+  PostMessageW(
+      hwnd, WM_COMMAND,
+      MAKEWPARAM(5104, BN_CLICKED), 0);
+  Sleep(20);
+
+  SendMessageW(
+      list, LB_SETCURSEL, 0, 0);
+  PostMessageW(
+      hwnd, WM_COMMAND,
+      MAKEWPARAM(5102, BN_CLICKED), 0);
+
+  HWND confirm = nullptr;
+  for (int attempt = 0;
+       attempt < 200 && !confirm;
+       ++attempt) {
+    confirm = FindWindowW(
+        L"#32770",
+        L"CX MCP Allowlist");
+    if (!confirm) {
+      Sleep(10);
+    }
+  }
+
+  if (confirm) {
+    PostMessageW(
+        confirm, WM_COMMAND,
+        MAKEWPARAM(IDOK, BN_CLICKED), 0);
+    for (int attempt = 0;
+         attempt < 100 &&
+         allowlist.IsAllowed("ui-actions");
+         ++attempt) {
+      Sleep(10);
+    }
+  }
+
+  PostMessageW(
+      hwnd, WM_COMMAND,
+      MAKEWPARAM(5105, BN_CLICKED), 0);
+  ui_thread.join();
+
+  ASSERT_NE(confirm, nullptr);
+  EXPECT_FALSE(
+      allowlist.IsAllowed("ui-actions"));
+}
+
+TEST_F(PrivacyUiTest, AllowlistDialogOpensAndClosesCleanly) {
+  UiFakePrompt prompt;
+  cx::agent::PermissionManager permissions(
+      *database_, prompt);
+  cx::agent::LocalLogger logger(
+      root_ / "logs" / "allowlist-ui.log");
+  ASSERT_TRUE(logger.Open());
+  cx::agent::AgentCore agent(permissions, logger);
+
+  cx::mcp::AllowlistManager allowlist(
+      root_ / "config" / "mcp_allowlist.json");
+  ASSERT_TRUE(allowlist.Load());
+  cx::mcp::RateLimiter limiter(10);
+  cx::mcp::McpClient client(
+      agent, allowlist, limiter, logger);
+  cx::mcp::AllowlistDialog dialog(
+      allowlist, client);
+
+  std::atomic<bool> entered{false};
+  std::thread ui_thread([&] {
+    entered.store(true);
+    dialog.Show(nullptr);
+  });
+
+  while (!entered.load()) {
+    Sleep(1);
+  }
+
+  HWND hwnd = nullptr;
+  for (int attempt = 0;
+       attempt < 100 && !hwnd;
+       ++attempt) {
+    hwnd = FindWindowW(
+        L"CXBuildMcpAllowlistDialog",
+        L"CX MCP Allowlist");
+    if (!hwnd) {
+      Sleep(10);
+    }
+  }
+
+  HWND list = nullptr;
+  if (hwnd) {
+    for (int attempt = 0;
+         attempt < 100 && !list;
+         ++attempt) {
+      list = FindWindowExW(
+          hwnd, nullptr, L"LISTBOX", nullptr);
+      if (!list) {
+        Sleep(10);
+      }
+    }
+  }
+
+  const LRESULT list_count =
+      list ? SendMessageW(list, LB_GETCOUNT, 0, 0) : LB_ERR;
+
+  if (hwnd) {
+    PostMessageW(hwnd, WM_CLOSE, 0, 0);
+  }
+  ui_thread.join();
+
+  ASSERT_NE(hwnd, nullptr);
+  ASSERT_NE(list, nullptr);
+  EXPECT_EQ(list_count, 0);
+
+  EXPECT_EQ(
+      FindWindowW(
+          L"CXBuildMcpAllowlistDialog",
+          L"CX MCP Allowlist"),
+      nullptr);
 }
 
 }  // namespace

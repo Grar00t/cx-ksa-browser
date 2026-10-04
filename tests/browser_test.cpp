@@ -366,4 +366,96 @@ TEST(NavigationAddressTest, NormalizesHostsAndRejectsUnsafeSchemes) {
           L"   ").has_value());
 }
 
+
+TEST_F(BrowserTest, EdgeOperationsFailClosedAndSingleCloseReplacesBlank) {
+  cx::browser::TabManager tabs(*database_);
+  ASSERT_TRUE(tabs.Restore());
+  ASSERT_EQ(tabs.tabs().size(), 1u);
+
+  const auto first_id = tabs.active_tab_id();
+  EXPECT_TRUE(tabs.ActivateTab(first_id));
+  EXPECT_FALSE(tabs.ActivateTab(999999));
+  EXPECT_FALSE(tabs.CloseTab(999999));
+  EXPECT_FALSE(tabs.UpdateTab(999999, "https://x.test", "X"));
+  EXPECT_FALSE(tabs.UpdateTab(first_id, "", "X"));
+
+  ASSERT_TRUE(tabs.UpdateTab(
+      first_id, "https://title.test", ""));
+  ASSERT_TRUE(tabs.active_tab().has_value());
+  EXPECT_EQ(tabs.active_tab()->title, "New Tab");
+
+  ASSERT_TRUE(tabs.CloseTab(first_id));
+  ASSERT_EQ(tabs.tabs().size(), 1u);
+  EXPECT_NE(tabs.active_tab_id(), first_id);
+  ASSERT_TRUE(tabs.active_tab().has_value());
+  EXPECT_EQ(tabs.active_tab()->url, "about:blank");
+
+  const auto inactive = tabs.CreateTab("", "", false);
+  ASSERT_TRUE(inactive.has_value());
+  EXPECT_NE(tabs.active_tab_id(), *inactive);
+  const auto created = database_->GetTab(*inactive);
+  ASSERT_TRUE(created.has_value());
+  EXPECT_EQ(created->url, "about:blank");
+  EXPECT_EQ(created->title, "New Tab");
+}
+
+TEST_F(BrowserTest, RestoreNormalizesPositionsAndInvalidActiveId) {
+  ASSERT_TRUE(database_->SetSetting(
+      "privacy.restore_session", "1"));
+
+  const auto first = database_->AddTab(
+      7, "https://one.test", "One", false);
+  const auto second = database_->AddTab(
+      42, "https://two.test", "Two", false);
+  ASSERT_GT(first, 0);
+  ASSERT_GT(second, 0);
+
+  const std::vector<std::string> invalid_ids = {
+      "", "abc", "-1", "1x", "999999999999999999999999"};
+  for (const auto& invalid : invalid_ids) {
+    ASSERT_TRUE(database_->SetSetting(
+        "browser.active_tab_id", invalid));
+    cx::browser::TabManager restored(*database_);
+    ASSERT_TRUE(restored.Restore());
+    ASSERT_EQ(restored.tabs().size(), 2u);
+    EXPECT_EQ(restored.tabs()[0].position, 0);
+    EXPECT_EQ(restored.tabs()[1].position, 1);
+    EXPECT_EQ(restored.active_tab_id(), first);
+  }
+}
+
+TEST_F(BrowserTest, NavigationFailClosedPathsDoNotMutateState) {
+  cx::browser::TabManager tabs(*database_);
+  ASSERT_TRUE(tabs.Restore());
+  cx::browser::HistoryService history(*database_);
+  cx::browser::NavigationController navigation(
+      tabs, history);
+
+  EXPECT_FALSE(navigation.Back());
+  EXPECT_FALSE(navigation.Forward());
+  EXPECT_FALSE(navigation.Reload());
+  EXPECT_FALSE(navigation.NavigateUrl(""));
+  EXPECT_FALSE(navigation.NavigateUrl(
+      "javascript:alert(1)"));
+  EXPECT_FALSE(navigation.NavigateAddress(
+      L"file:///C:/Windows/System32"));
+  EXPECT_FALSE(navigation.CanGoBack());
+  EXPECT_FALSE(navigation.CanGoForward());
+
+  FakeSurface surface;
+  surface.allow_navigation = false;
+  surface.allow_reload = false;
+  navigation.AttachSurface(&surface);
+  EXPECT_FALSE(navigation.NavigateUrl(
+      "https://blocked.test"));
+  EXPECT_FALSE(navigation.Reload());
+
+  navigation.ForgetTab(tabs.active_tab_id());
+  navigation.OnNavigationCompleted(
+      false,
+      "https://failed.test",
+      "Failed");
+  EXPECT_TRUE(history.Recent().empty());
+}
+
 }  // namespace

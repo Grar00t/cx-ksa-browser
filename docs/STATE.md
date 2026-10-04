@@ -1,134 +1,115 @@
 # Project State
 
 ## Current Status
-Phase: P09 implemented and verified on branch `prompt-P09`.
-CX now has a real Windows installer build, clean uninstall flow, optional
-per-user PATH integration, Start Menu shortcuts, and a relocatable portable
-package.
+Phase: P10 implemented locally on branch `prompt-P10`; GitHub Actions verification is pending the first push.
 
-## Packaging
-Tool: Inno Setup 6.7.3.
+CX now includes final user/developer documentation, real screenshots, expanded unit/integration/UI/security/performance tests, an enforced line-coverage gate, Windows packaging, portable packaging, and a GitHub Actions workflow.
 
-Installer source:
-- `installer/cx-installer.iss`
-- `installer/build_installer.ps1`
-- `installer/verify_package.ps1`
+## Documentation
+User-facing:
+- `README.md` with real CX screenshots.
+- `docs/INSTALL.md`.
+- `docs/USER_GUIDE.md`.
+- `docs/PRIVACY_POLICY.md`.
 
-Portable launcher:
-- `portable/run_portable.bat`
+Developer-facing:
+- `docs/ARCHITECTURE.md`.
+- `docs/BUILD.md`.
+- `CONTRIBUTING.md`.
+- `SECURITY.md`.
 
-Install documentation:
-- `docs/INSTALL.md`
+Screenshots:
+- `docs/screenshots/cx-main.png`.
+- `docs/screenshots/settings-privacy.png`.
 
-Generated `dist/` artifacts are intentionally ignored by Git.
+## Final Test Suite
+The GoogleTest executable now contains unit, integration, Win32 UI smoke,
+security, parser/fail-closed, persistence, crash-recovery, and performance tests.
 
-## Installed Mode
-Default install destination:
-`%LOCALAPPDATA%\Programs\CX Build`
+Local Release verification on 2026-10-04:
+- PASS: Release build produced `build/Release/cx.exe`.
+- PASS: CTest 1/1.
+- PASS: GoogleTest 71/71 from 18 suites.
 
-The destination is user-selectable. Verification installed successfully into a
-custom temporary directory containing spaces.
+Security verification:
+- PASS: local first-party core test observed no increase in process-owned established TCP or UDP endpoints.
+- PASS: remote/unsafe inputs fail closed in tested config/MCP/navigation paths.
+- PASS: static source search found no WinHTTP, WinINet, URLDownloadToFile, WSAStartup, socket(), or connect() client calls in `src/`.
+- FIXED: MCP JSON parser previously accepted trailing commas; P10 now rejects them and includes regression coverage.
 
-The installer creates:
-- CX Build Start Menu shortcut.
-- Uninstall CX Build Start Menu shortcut.
-- standard Inno uninstall registration.
-- optional current-user PATH entry only when the unchecked `addtopath` task is selected.
+Network boundary:
+- The local-core result is not a claim that the complete browser process tree is network silent.
+- User-requested browsing is network activity.
+- Microsoft WebView2 remains an external runtime and may contact websites or Microsoft/Windows infrastructure.
 
-The PATH entry is removed on uninstall. Verification also compared PATH token
-sets before and after uninstall and observed no non-CX entry changes.
+## Coverage
+Tool: OpenCppCoverage 0.9.9.0.
 
-## Package Contents
-The package contains CX-owned files only:
-- `cx.exe`
-- LICENSE
-- NOTICE
-- PRIVACY.md
-- SECURITY.md
-- `docs/INSTALL.md`
+Gate:
+`pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_coverage.ps1 -Minimum 80`
 
-Inno adds its own uninstaller files. Verification observed zero unexpected
-installed files before launching the application.
+Measured scope:
+- `src/`
+- excluding only `src/main.cpp` and `src/app_window.cpp`, the executable entrypoint and WebView2 host shell.
 
-No advertising bundle, third-party offer, updater, scheduled task, or service
-is defined by P09. There is no application auto-update mechanism in the
-installer by design.
+Final successful local gate:
+- PASS: 81.26% line coverage.
+- covered: 2359.
+- valid: 2903.
+- threshold: 80%.
 
-## Portable Mode
-The generated portable folder/ZIP contains `cx.exe`, the project documents,
-and `run_portable.bat`.
+The coverage script performs a clean Debug rebuild of `storage_tests` before measurement and rejects empty/invalid 0/0 reports.
 
-The launcher redirects `APPDATA` and `LOCALAPPDATA` to a `data` directory
-beside the executable. Verification launched CX from a relocated temporary
-folder and observed the SQLite database under:
-`data\Roaming\CX Build\data.db`.
+## Performance
+Final successful coverage-gate run:
+- New-tab P95: 2.7493 ms, threshold <100 ms.
+- 100 config save/load round trips: 199.718 ms, threshold <1000 ms.
 
-No physical removable drive was present during verification. Windows reported
-C: and D: as fixed disks (DriveType 3), so the physical-USB criterion remains
-NOT_VERIFIED rather than being inferred from the relocated-folder test.
+Release regression run also passed both performance tests.
 
-## Process Exit Verification
-Installed and portable CX were both launched and closed using WM_CLOSE.
-After close, verification found:
-- 0 matching `cx.exe` processes.
-- 0 CX-owned `msedgewebview2.exe` processes tied to the tested package path.
-
-## Install/Uninstall Verification
-A real silent install/uninstall cycle verified:
-- custom install location works.
-- Start Menu shortcut exists after install.
-- optional PATH task adds the custom install directory.
-- one CX uninstall registration exists while installed.
-- uninstall completes successfully.
-- install directory is gone after uninstall.
-- Start Menu shortcut is gone after uninstall.
-- CX uninstall registration count is zero after uninstall.
-- temporary CX PATH entry is gone after uninstall.
-- final machine test state contains no CX P09 temporary install residue.
-
-## Artifacts
-Installer:
-- file: `CX-Build-Setup-0.9.0.exe`
-- size: 2,661,132 bytes (~2.54 MiB)
-- SHA256: `A5954B4802BD434C0831B928FF4755C0E027C7872E76D84B30DDCBF12E4998AB`
+## Packaging Regression
+Final local P10 package rebuild:
+- installer: `CX-Build-Setup-0.9.0.exe`
+- size: 2,662,218 bytes (<10 MiB)
+- SHA256: `16629AFCD3814088BE35F434A16EAD13EC433EC7F000BC028D2499D2B75D9E3B`
+- signing: unavailable / NotSigned because no valid code-signing certificate is present.
 
 Portable ZIP:
-- file: `CX-Build-Portable-0.9.0.zip`
-- size: 726,757 bytes
-- SHA256: `1BECE37823C72A8F5808739CEEE073046AAFA272369410E4164BBBBD2FF3FE43`
+- `CX-Build-Portable-0.9.0.zip`
+- size: 749,693 bytes
+- SHA256: `7F9F1E822AD93A3E473497BA2D587DB638D19DD63F7424CA162A001454273245`
 
-## Code Signing
-`signtool.exe` is installed and available.
-No valid CurrentUser Code Signing certificate was present.
-Result: `NotSigned` / signing acceptance is unavailable, not passed.
-
-The build script will attempt SHA-256 Authenticode signing automatically when a
-valid user Code Signing certificate is available.
-
-## Regression Verification On 2026-10-04
-- PASS: CTest 1/1.
-- PASS: direct GoogleTest 52/52.
-- PASS: installer compile with Inno Setup 6.7.3.
-- PASS: installer size is below 10 MiB.
-- PASS: install + uninstall cleanup verification.
+Package verifier:
+- PASS: install/uninstall cleanup.
 - PASS: Start Menu shortcut.
 - PASS: optional PATH add/remove.
 - PASS: zero unexpected installed files.
-- PASS: zero CX-owned background processes after close.
-- PASS: portable launch from relocated folder.
-- PASS: portable CX data redirected beside the executable.
+- PASS: zero CX-owned processes after close.
+- PASS: portable launch and local data redirection.
 - NOT_VERIFIED: physical USB media; no removable drive was connected.
-- UNAVAILABLE: code signing certificate.
+- UNAVAILABLE: Authenticode signing certificate.
+
+## CI
+`.github/workflows/ci.yml` defines Windows jobs for:
+1. Release build + CTest + direct GoogleTest.
+2. clean Debug coverage gate at >=80%.
+3. installer/portable package build after build and coverage succeed.
+4. upload of Cobertura coverage and release-candidate package artifacts.
+
+CI status: PENDING_FIRST_PUSH.
 
 ## Acceptance Criteria
-- [x] Installer <10MB.
-- [x] Install + uninstall leaves no tested CX registry/PATH/Start Menu junk.
-- [~] Portable mode works from a relocated folder; physical USB media not available to verify.
-- [x] No CX-owned background processes remain after close.
-- [ ] Code signing: signtool available, signing certificate unavailable.
+- [x] All requested documentation exists and is updated.
+- [x] Measured line coverage >80%: 81.26%.
+- [ ] GitHub Actions pipeline green: pending first push.
+- [x] No critical first-party issue is known from the completed automated/static P10 checks; this is not a penetration-test claim.
+- [ ] Release candidate ready: local RC passes; final status waits for green GitHub CI.
+
+## Known Boundaries
+- WebView2 whole-process-tree zero-network is not claimed.
+- Physical USB execution remains unverified from P09.
+- Code signing remains unavailable without a certificate.
+- Local Visual Studio emits MSB8029; it has not failed build/tests.
 
 ## Receipt
-`docs/P09_RECEIPT.json`
-
-## Next Prompt
-P10 (not started).
+`docs/P10_RECEIPT.json`

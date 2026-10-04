@@ -320,4 +320,69 @@ TEST_F(ConfigTest, RemoteBackupPathsAreRejectedByDesign) {
       "local-only");
 }
 
+
+TEST_F(ConfigTest, SchemaCorruptionVariantsRecoverToDefaults) {
+  const std::vector<std::string> invalid = {
+      R"({"version":2,"general":{"startup":"blank","default_search":"disabled"},"appearance":{"theme":"system","font_size_percent":100},"privacy":{"cookies":"block_all","cache":"memory_only"},"advanced":{"developer_tools":false,"experimental":false}})",
+      R"({"version":1,"general":{"startup":"bad","default_search":"disabled"},"appearance":{"theme":"system","font_size_percent":100},"privacy":{"cookies":"block_all","cache":"memory_only"},"advanced":{"developer_tools":false,"experimental":false}})",
+      R"({"version":1,"general":{"startup":"blank","default_search":"bad"},"appearance":{"theme":"system","font_size_percent":100},"privacy":{"cookies":"block_all","cache":"memory_only"},"advanced":{"developer_tools":false,"experimental":false}})",
+      R"({"version":1,"general":{"startup":"blank","default_search":"disabled"},"appearance":{"theme":"bad","font_size_percent":100},"privacy":{"cookies":"block_all","cache":"memory_only"},"advanced":{"developer_tools":false,"experimental":false}})",
+      R"({"version":1,"general":{"startup":"blank","default_search":"disabled"},"appearance":{"theme":"system","font_size_percent":74},"privacy":{"cookies":"block_all","cache":"memory_only"},"advanced":{"developer_tools":false,"experimental":false}})",
+      R"({"version":1,"general":{"startup":"blank","default_search":"disabled"},"appearance":{"theme":"system","font_size_percent":100},"privacy":{"cookies":"bad","cache":"memory_only"},"advanced":{"developer_tools":false,"experimental":false}})",
+      R"({"version":1,"general":{"startup":"blank","default_search":"disabled"},"appearance":{"theme":"system","font_size_percent":100},"privacy":{"cookies":"block_all","cache":"bad"},"advanced":{"developer_tools":false,"experimental":false}})",
+      R"({"version":1,"general":{"startup":"blank","default_search":"disabled"},"appearance":{"theme":"system","font_size_percent":100},"privacy":{"cookies":"block_all","cache":"memory_only"},"advanced":{"developer_tools":"no","experimental":false}})",
+      R"({"version":1,"general":{"startup":"blank","default_search":"disabled"},"appearance":{"theme":"system","font_size_percent":100},"privacy":{"cookies":"block_all","cache":"memory_only"}})",
+      R"({"version":1,"general":{"startup":"blank","default_search":"disabled"},"appearance":{"theme":"system","font_size_percent":100},"privacy":{"cookies":"block_all","cache":"memory_only"},"advanced":{"developer_tools":false,"experimental":false},"extra":true})"
+  };
+
+  for (std::size_t i = 0; i < invalid.size(); ++i) {
+    const auto path =
+        root_ / ("corrupt-schema-" +
+                 std::to_string(i) + ".json");
+    {
+      std::ofstream output(path, std::ios::binary);
+      output << invalid[i];
+    }
+
+    cx::config::ConfigManager manager(path);
+    EXPECT_EQ(
+        manager.Load(),
+        cx::config::LoadStatus::RecoveredFromCorrupt)
+        << "case " << i;
+    EXPECT_EQ(
+        manager.settings(),
+        cx::config::DefaultSettings());
+  }
+}
+
+TEST_F(ConfigTest, Utf8BomValidConfigLoads) {
+  cx::config::ConfigManager manager(config_path_);
+  ASSERT_NE(
+      manager.Load(),
+      cx::config::LoadStatus::Failed);
+
+  auto changed = manager.settings();
+  changed.general.default_search =
+      cx::config::SearchProvider::Google;
+  changed.appearance.theme = cx::config::Theme::Dark;
+  ASSERT_TRUE(manager.Set(changed));
+
+  std::ifstream input(config_path_, std::ios::binary);
+  const std::string body{
+      std::istreambuf_iterator<char>(input),
+      std::istreambuf_iterator<char>()};
+  {
+    std::ofstream output(
+        config_path_,
+        std::ios::binary | std::ios::trunc);
+    output << "\xEF\xBB\xBF" << body;
+  }
+
+  cx::config::ConfigManager reloaded(config_path_);
+  EXPECT_EQ(
+      reloaded.Load(),
+      cx::config::LoadStatus::Loaded);
+  EXPECT_EQ(reloaded.settings(), changed);
+}
+
 }  // namespace

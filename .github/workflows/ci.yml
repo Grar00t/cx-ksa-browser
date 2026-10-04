@@ -1,0 +1,111 @@
+name: CX Build CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Windows build and tests
+    runs-on: windows-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Release
+        shell: pwsh
+        run: cmake -S . -B build
+
+      - name: Build Release
+        shell: pwsh
+        run: cmake --build build --config Release
+
+      - name: Run CTest
+        shell: pwsh
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Run GoogleTest directly
+        shell: pwsh
+        run: .\build\tests-bin\storage_tests.exe
+
+  coverage:
+    name: Coverage gate
+    runs-on: windows-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install OpenCppCoverage
+        shell: pwsh
+        run: choco install opencppcoverage -y --no-progress
+
+      - name: Configure Debug
+        shell: pwsh
+        run: cmake -S . -B build
+
+      - name: Build Debug
+        shell: pwsh
+        run: cmake --build build --config Debug
+
+      - name: Enforce 80 percent line coverage
+        shell: pwsh
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_coverage.ps1 -Minimum 80
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-cobertura
+          path: coverage/coverage.xml
+          if-no-files-found: error
+
+  package:
+    name: Installer and portable artifacts
+    runs-on: windows-latest
+    timeout-minutes: 25
+    needs: [build-test, coverage]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Configure Release
+        shell: pwsh
+        run: cmake -S . -B build
+
+      - name: Build Release
+        shell: pwsh
+        run: cmake --build build --config Release
+
+      - name: Build installer and portable ZIP
+        shell: pwsh
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File .\installer\build_installer.ps1
+
+      - name: Enforce installer size
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem .\dist\CX-Build-Setup-*.exe | Select-Object -First 1
+          if (-not $installer) { throw "Installer not generated." }
+          if ($installer.Length -ge 10MB) { throw "Installer is not below 10 MB." }
+          Write-Host "INSTALLER_BYTES=$($installer.Length)"
+
+      - name: Upload release-candidate packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: cx-build-release-candidate
+          path: |
+            dist/CX-Build-Setup-*.exe
+            dist/CX-Build-Portable-*.zip
+          if-no-files-found: error

@@ -131,6 +131,11 @@ bool ParseStringArray(
     if (!Consume(input, position, ',')) {
       return false;
     }
+    SkipWhitespace(input, position);
+    if (*position < input.size() &&
+        input[*position] == ']') {
+      return false;
+    }
   }
 }
 
@@ -190,6 +195,11 @@ bool ParseServer(
     if (!Consume(input, position, ',')) {
       return false;
     }
+    SkipWhitespace(input, position);
+    if (*position < input.size() &&
+        input[*position] == '}') {
+      return false;
+    }
   }
 }
 
@@ -222,6 +232,11 @@ bool ParseServers(
       return true;
     }
     if (!Consume(input, position, ',')) {
+      return false;
+    }
+    SkipWhitespace(input, position);
+    if (*position < input.size() &&
+        input[*position] == ']') {
       return false;
     }
   }
@@ -273,6 +288,11 @@ bool ParseRoot(
       break;
     }
     if (!Consume(input, &position, ',')) {
+      return false;
+    }
+    SkipWhitespace(input, &position);
+    if (position < input.size() &&
+        input[position] == '}') {
       return false;
     }
   }

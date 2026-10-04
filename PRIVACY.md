@@ -1,16 +1,9 @@
-# Privacy Policy
+# CX Build Privacy
 
-CX Build is designed around local-first operation.
+The formal privacy policy for the current release candidate is docs/PRIVACY_POLICY.md.
 
-Default guarantees:
-- No telemetry.
-- No analytics.
-- No crash upload.
-- No remote update mechanism.
-- No cloud sync.
-- Local data storage only unless a later feature explicitly says otherwise.
-- Agent and MCP features require explicit user consent.
-- Agent and MCP access must be allowlisted and restricted by default.
+CX is local-first. Its first-party application contains no CX telemetry upload client, cloud synchronization service, advertising SDK, or application auto-updater.
 
-Any future change that weakens these defaults must be documented as an explicit
-decision and must not silently alter existing user expectations.
+This does not mean the complete browser process tree is network silent. User-requested browsing requires network access, and Microsoft WebView2 is an external runtime that can communicate with websites and Microsoft or Windows infrastructure.
+
+See docs/PRIVACY_POLICY.md for storage, retention, portable mode, agent and MCP, third-party, and renderer details.

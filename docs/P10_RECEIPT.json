@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "project": "CX Build",
+  "phase": "P10",
+  "date": "2026-10-04",
+  "branch": "prompt-P10",
+  "base_commit": "d075e6f70fdd4522b6c23c6c9212f42fb9bd83f4",
+  "local_verification": {
+    "release_build": "PASS",
+    "ctest": "1/1 PASS",
+    "googletest": "71/71 PASS",
+    "test_suites": 18,
+    "line_coverage_percent": 81.26,
+    "lines_covered": 2359,
+    "lines_valid": 2903,
+    "coverage_threshold_percent": 80,
+    "new_tab_p95_ms": 2.7493,
+    "config_100_roundtrips_ms": 199.718,
+    "local_core_outbound_endpoint_delta": 0,
+    "critical_first_party_issue_known_from_p10_checks": false
+  },
+  "security": {
+    "mcp_trailing_comma_parser_bug_found_and_fixed": true,
+    "static_first_party_network_api_search_matches": 0,
+    "whole_webview2_tree_zero_network_claimed": false
+  },
+  "package_regression": {
+    "installer_bytes": 2662218,
+    "installer_sha256": "16629AFCD3814088BE35F434A16EAD13EC433EC7F000BC028D2499D2B75D9E3B",
+    "portable_zip_bytes": 749693,
+    "portable_zip_sha256": "7F9F1E822AD93A3E473497BA2D587DB638D19DD63F7424CA162A001454273245",
+    "installer_under_10mb": true,
+    "package_verify": "PASS",
+    "code_signing": "UNAVAILABLE",
+    "physical_usb": "NOT_VERIFIED_NO_REMOVABLE_DRIVE_PRESENT"
+  },
+  "github_ci": {
+    "status": "PENDING_FIRST_PUSH",
+    "run_id": null,
+    "commit": null
+  }
+}

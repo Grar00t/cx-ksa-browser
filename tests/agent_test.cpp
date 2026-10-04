@@ -214,6 +214,54 @@ TEST_F(AgentTest, LocalLoggerWritesOnlyRequestedFile) {
   EXPECT_NE(line.find("local-only"), std::string::npos);
 }
 
+
+
+TEST(AgentDescriptorTest, IdMappingAndUnknownCapabilityBehavior) {
+  const std::vector<std::pair<std::string_view, cx::agent::Capability>>
+      expected = {
+          {"agent.run", cx::agent::Capability::AgentRun},
+          {"browser.read_page", cx::agent::Capability::ReadPage},
+          {"browser.navigate", cx::agent::Capability::Navigate},
+          {"tabs.manage", cx::agent::Capability::ManageTabs},
+          {"clipboard.write", cx::agent::Capability::ClipboardWrite},
+          {"native_messaging.connect", cx::agent::Capability::NativeMessaging},
+          {"mcp.connect", cx::agent::Capability::McpConnect},
+      };
+
+  for (const auto& [id, capability] : expected) {
+    const auto parsed =
+        cx::agent::CapabilityFromId(id);
+    ASSERT_TRUE(parsed.has_value());
+    EXPECT_EQ(*parsed, capability);
+    EXPECT_EQ(
+        cx::agent::DescribeCapability(capability).id,
+        id);
+  }
+
+  EXPECT_FALSE(
+      cx::agent::CapabilityFromId(
+          "unknown.capability").has_value());
+  EXPECT_THROW(
+      cx::agent::DescribeCapability(
+          static_cast<cx::agent::Capability>(999)),
+      std::invalid_argument);
+}
+
+TEST_F(AgentTest, RevokeSingleCapabilityPersistsDenied) {
+  FakePrompt prompt({true});
+  cx::agent::PermissionManager permissions(
+      *database_, prompt);
+  ASSERT_TRUE(permissions.Ensure(
+      nullptr,
+      cx::agent::Capability::Navigate));
+  ASSERT_TRUE(permissions.IsGranted(
+      cx::agent::Capability::Navigate));
+  ASSERT_TRUE(permissions.Revoke(
+      cx::agent::Capability::Navigate));
+  EXPECT_FALSE(permissions.IsGranted(
+      cx::agent::Capability::Navigate));
+}
+
 TEST(AgentDefaultLogPath, UsesAppDataCxBuildLogs) {
   wchar_t* appdata = nullptr;
   std::size_t length = 0;
