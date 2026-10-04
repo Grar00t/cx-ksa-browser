@@ -1,6 +1,7 @@
 #pragma once
 
 #include "agent/permissions.h"
+#include "localization/strings.h"
 #include "ui/privacy_dashboard.h"
 
 #include <windows.h>
@@ -47,7 +48,9 @@ public:
       mcp::AllowlistDialog& allowlist_dialog,
       mcp::McpClient& mcp_client,
       browser::HistoryService& history,
-      browser::BookmarkService& bookmarks);
+      browser::BookmarkService& bookmarks,
+      localization::Locale locale =
+          localization::CurrentLocale());
 
   void Show(HWND owner);
   void Refresh();
@@ -93,6 +96,7 @@ private:
   mcp::McpClient& mcp_client_;
   browser::HistoryService& history_;
   browser::BookmarkService& bookmarks_;
+  localization::Locale locale_;
   PrivacyDashboard dashboard_;
 
   HWND owner_ = nullptr;

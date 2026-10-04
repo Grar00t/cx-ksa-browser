@@ -7,6 +7,7 @@
 #include "mcp/allowlist_manager.h"
 #include "mcp/mcp_client.h"
 #include "mcp/rate_limiter.h"
+#include "localization/strings.h"
 #include "storage/database.h"
 #include "ui/design_tokens.h"
 #include "ui/najdi_theme.h"
@@ -18,6 +19,7 @@
 #include <windows.h>
 #include <commctrl.h>
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <filesystem>
@@ -74,11 +76,63 @@ TEST(DesignSystemTest, TokensRespectNajdiConstraints) {
   EXPECT_EQ(Border::Standard, 1);
   EXPECT_LE(Density::ControlHeight, 32);
   EXPECT_STREQ(Typography::Family, L"Segoe UI");
+  EXPECT_STREQ(
+      Typography::ArabicFallbackFamily,
+      L"Tahoma");
   EXPECT_NE(Color::Background, Color::Text);
   EXPECT_NE(Focus::Primary, Focus::Secondary);
   EXPECT_EQ(
       SettingsLayout::PageContentStart,
       SettingsLayout::PageLabelStart + Spacing::Md);
+}
+
+
+TEST(LocalizationTest, CoreStringsHaveEnglishAndArabicWithEnglishFallback) {
+  using cx::localization::Locale;
+  using cx::localization::StringId;
+
+  constexpr std::array<StringId, 12> required{{
+      StringId::NewTab,
+      StringId::Reload,
+      StringId::Go,
+      StringId::Bookmark,
+      StringId::Settings,
+      StringId::Privacy,
+      StringId::Agent,
+      StringId::Mcp,
+      StringId::Consent,
+      StringId::Denied,
+      StringId::Allowed,
+      StringId::LocalOnly,
+  }};
+
+  for (const auto id : required) {
+    EXPECT_FALSE(
+        cx::localization::Lookup(id, Locale::English).empty());
+    EXPECT_FALSE(
+        cx::localization::Lookup(id, Locale::Arabic).empty());
+  }
+
+  EXPECT_EQ(
+      cx::localization::Lookup(
+          StringId::NewTab, Locale::English),
+      L"New Tab");
+  EXPECT_EQ(
+      cx::localization::Lookup(
+          StringId::NewTab, Locale::Arabic),
+      L"\u0639\u0644\u0627\u0645\u0629 \u062a\u0628\u0648\u064a\u0628 \u062c\u062f\u064a\u062f\u0629");
+
+  EXPECT_EQ(
+      cx::localization::LocaleFromName(L"ar-SA"),
+      Locale::Arabic);
+  EXPECT_EQ(
+      cx::localization::LocaleFromName(L"AR"),
+      Locale::Arabic);
+  EXPECT_EQ(
+      cx::localization::LocaleFromName(L"fr-FR"),
+      Locale::English);
+  EXPECT_TRUE(cx::localization::IsRtl(Locale::Arabic));
+  EXPECT_FALSE(cx::localization::IsRtl(Locale::English));
 }
 
 TEST(DesignSystemTest, RtlDirectionCanBeAppliedAndRemoved) {
@@ -272,7 +326,8 @@ TEST_F(PrivacyUiTest, SettingsWindowCreatesFourPagesAndPersistsToggle) {
   cx::ui::SettingsWindow window(
       *database_, permissions, agent,
       allowlist, allowlist_dialog, client,
-      history, bookmarks);
+      history, bookmarks,
+      cx::localization::Locale::English);
 
   window.Show(nullptr);
   HWND hwnd = FindWindowW(
@@ -348,6 +403,82 @@ TEST_F(PrivacyUiTest, SettingsWindowCreatesFourPagesAndPersistsToggle) {
 }
 
 
+
+
+TEST_F(PrivacyUiTest, ArabicSettingsWindowUsesRtlAndLocalizedTabs) {
+  UiFakePrompt prompt;
+  cx::agent::PermissionManager permissions(
+      *database_, prompt);
+  cx::agent::LocalLogger logger(
+      root_ / "logs" / "settings-ar.log");
+  ASSERT_TRUE(logger.Open());
+  cx::agent::AgentCore agent(permissions, logger);
+
+  cx::mcp::AllowlistManager allowlist(
+      root_ / "config" / "mcp_allowlist_ar.json");
+  ASSERT_TRUE(allowlist.Load());
+  cx::mcp::RateLimiter limiter(10);
+  cx::mcp::McpClient client(
+      agent, allowlist, limiter, logger);
+  cx::mcp::AllowlistDialog allowlist_dialog(
+      allowlist, client);
+  cx::browser::HistoryService history(*database_);
+  cx::browser::BookmarkService bookmarks(*database_);
+
+  cx::ui::SettingsWindow window(
+      *database_, permissions, agent,
+      allowlist, allowlist_dialog, client,
+      history, bookmarks,
+      cx::localization::Locale::Arabic);
+
+  window.Show(nullptr);
+  HWND hwnd = FindWindowW(
+      L"CXBuildSettingsWindow", nullptr);
+  ASSERT_NE(hwnd, nullptr);
+
+  const LONG_PTR style =
+      GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+  EXPECT_NE(style & WS_EX_LAYOUTRTL, 0);
+  EXPECT_NE(style & WS_EX_RTLREADING, 0);
+
+  wchar_t title[256]{};
+  GetWindowTextW(
+      hwnd, title,
+      static_cast<int>(std::size(title)));
+  std::wstring expected_title = L"CX ";
+  expected_title += std::wstring(
+      cx::localization::Lookup(
+          cx::localization::StringId::SettingsAndPrivacy,
+          cx::localization::Locale::Arabic));
+  EXPECT_EQ(title, expected_title);
+
+  HWND tabs = FindWindowExW(
+      hwnd, nullptr, WC_TABCONTROLW, nullptr);
+  ASSERT_NE(tabs, nullptr);
+  EXPECT_NE(
+      GetWindowLongPtrW(tabs, GWL_EXSTYLE) &
+          WS_EX_LAYOUTRTL,
+      0);
+
+  wchar_t first_tab[256]{};
+  TCITEMW item{};
+  item.mask = TCIF_TEXT;
+  item.pszText = first_tab;
+  item.cchTextMax =
+      static_cast<int>(std::size(first_tab));
+  ASSERT_NE(
+      SendMessageW(
+          tabs, TCM_GETITEMW, 0,
+          reinterpret_cast<LPARAM>(&item)),
+      0);
+  EXPECT_EQ(
+      std::wstring_view(first_tab),
+      cx::localization::Lookup(
+          cx::localization::StringId::PrivacyAndSecurity,
+          cx::localization::Locale::Arabic));
+
+  DestroyWindow(hwnd);
+}
 
 TEST_F(PrivacyUiTest, DashboardAcceptsSizeAndFormatsUnits) {
   UiFakePrompt prompt;

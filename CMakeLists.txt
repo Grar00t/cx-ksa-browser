@@ -60,6 +60,15 @@ if(MSVC)
   target_compile_options(cx_storage PRIVATE /W4 /permissive- /EHsc)
 endif()
 
+add_library(cx_localization STATIC
+  src/localization/strings.cpp
+  src/localization/strings.h)
+target_include_directories(cx_localization PUBLIC src)
+target_compile_definitions(cx_localization PRIVATE UNICODE _UNICODE)
+if(MSVC)
+  target_compile_options(cx_localization PRIVATE /W4 /permissive- /EHsc)
+endif()
+
 add_library(cx_config STATIC
   src/config/config_manager.cpp
   src/config/config_manager.h
@@ -135,6 +144,7 @@ add_library(cx_ui STATIC
 target_include_directories(cx_ui PUBLIC src)
 target_compile_definitions(cx_ui PRIVATE UNICODE _UNICODE)
 target_link_libraries(cx_ui PUBLIC
+  cx_localization
   cx_mcp
   cx_browser
   user32

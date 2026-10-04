@@ -31,27 +31,37 @@ HBRUSH Brush(COLORREF color) noexcept {
   return brushes[0];
 }
 
+HFONT CreateUiFont(int weight) noexcept {
+  HFONT font = CreateFontW(
+      design::Typography::BodyHeight, 0, 0, 0,
+      weight,
+      FALSE, FALSE, FALSE,
+      DEFAULT_CHARSET,
+      OUT_DEFAULT_PRECIS,
+      CLIP_DEFAULT_PRECIS,
+      CLEARTYPE_QUALITY,
+      DEFAULT_PITCH | FF_DONTCARE,
+      design::Typography::Family);
+  if (!font) {
+    font = CreateFontW(
+        design::Typography::BodyHeight, 0, 0, 0,
+        weight,
+        FALSE, FALSE, FALSE,
+        ARABIC_CHARSET,
+        OUT_DEFAULT_PRECIS,
+        CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY,
+        DEFAULT_PITCH | FF_DONTCARE,
+        design::Typography::ArabicFallbackFamily);
+  }
+  return font;
+}
+
 HFONT Font(int weight) noexcept {
-  static HFONT normal = CreateFontW(
-      design::Typography::BodyHeight, 0, 0, 0,
-      design::Typography::WeightNormal,
-      FALSE, FALSE, FALSE,
-      DEFAULT_CHARSET,
-      OUT_DEFAULT_PRECIS,
-      CLIP_DEFAULT_PRECIS,
-      CLEARTYPE_QUALITY,
-      DEFAULT_PITCH | FF_DONTCARE,
-      design::Typography::Family);
-  static HFONT semibold = CreateFontW(
-      design::Typography::BodyHeight, 0, 0, 0,
-      design::Typography::WeightSemibold,
-      FALSE, FALSE, FALSE,
-      DEFAULT_CHARSET,
-      OUT_DEFAULT_PRECIS,
-      CLIP_DEFAULT_PRECIS,
-      CLEARTYPE_QUALITY,
-      DEFAULT_PITCH | FF_DONTCARE,
-      design::Typography::Family);
+  static HFONT normal = CreateUiFont(
+      design::Typography::WeightNormal);
+  static HFONT semibold = CreateUiFont(
+      design::Typography::WeightSemibold);
   return weight >= FW_SEMIBOLD ? semibold : normal;
 }
 
@@ -108,13 +118,19 @@ void PaintTabControl(HWND tabs, HDC dc) noexcept {
     SetTextColor(
         dc,
         active ? Palette::Text : Palette::MutedText);
+    const bool rtl =
+        (GetWindowLongPtrW(tabs, GWL_EXSTYLE) &
+         WS_EX_LAYOUTRTL) != 0;
+    const UINT text_flags =
+        (rtl ? DT_RIGHT | DT_RTLREADING : DT_LEFT) |
+        DT_VCENTER | DT_SINGLELINE |
+        DT_END_ELLIPSIS | DT_NOPREFIX;
     DrawTextW(
         dc,
         text,
         -1,
         &text_rect,
-        DT_LEFT | DT_VCENTER | DT_SINGLELINE |
-            DT_END_ELLIPSIS | DT_NOPREFIX);
+        text_flags);
     SelectObject(dc, previous_font);
 
     if (active) {

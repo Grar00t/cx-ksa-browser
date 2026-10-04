@@ -87,7 +87,8 @@ SettingsWindow::SettingsWindow(
     mcp::AllowlistDialog& allowlist_dialog,
     mcp::McpClient& mcp_client,
     browser::HistoryService& history,
-    browser::BookmarkService& bookmarks)
+    browser::BookmarkService& bookmarks,
+    localization::Locale locale)
     : database_(database),
       permissions_(permissions),
       agent_(agent),
@@ -96,6 +97,7 @@ SettingsWindow::SettingsWindow(
       mcp_client_(mcp_client),
       history_(history),
       bookmarks_(bookmarks),
+      locale_(locale),
       dashboard_(
           permissions_,
           allowlist_,
@@ -144,10 +146,19 @@ void SettingsWindow::Show(HWND owner) {
       theme::BackgroundBrush();
   RegisterClassExW(&window_class);
 
+  const bool rtl = localization::IsRtl(locale_);
+  const DWORD extended_style =
+      WS_EX_APPWINDOW |
+      (rtl ? WS_EX_LAYOUTRTL | WS_EX_RTLREADING : 0);
+  std::wstring title = L"CX ";
+  title += std::wstring(localization::Lookup(
+      localization::StringId::SettingsAndPrivacy,
+      locale_));
+
   hwnd_ = CreateWindowExW(
-      WS_EX_APPWINDOW,
+      extended_style,
       kWindowClass,
-      L"CX Settings & Privacy",
+      title.c_str(),
       WS_OVERLAPPEDWINDOW | WS_VISIBLE,
       CW_USEDEFAULT, CW_USEDEFAULT,
       design::Window::SettingsWidth,
@@ -158,6 +169,7 @@ void SettingsWindow::Show(HWND owner) {
   }
 
   theme::ApplyWindowChrome(hwnd_);
+  theme::ApplyLayoutDirection(hwnd_, rtl);
   CreateControls();
   theme::ApplyFontToChildren(hwnd_);
   Layout();
@@ -205,18 +217,20 @@ void SettingsWindow::CreateControls() {
       hwnd_, nullptr,
       GetModuleHandleW(nullptr), nullptr);
   theme::StyleTabControl(tabs_);
+  theme::ApplyLayoutDirection(
+      tabs_, localization::IsRtl(locale_));
 
-  const wchar_t* names[] = {
-      L"Privacy & Security",
-      L"Agent Permissions",
-      L"MCP Allowlist",
-      L"Data & Storage",
+  const localization::StringId names[] = {
+      localization::StringId::PrivacyAndSecurity,
+      localization::StringId::AgentPermissions,
+      localization::StringId::McpAllowlist,
+      localization::StringId::DataAndStorage,
   };
   for (int i = 0; i < 4; ++i) {
+    const auto name = localization::Lookup(names[i], locale_);
     TCITEMW item{};
     item.mask = TCIF_TEXT;
-    item.pszText =
-        const_cast<wchar_t*>(names[i]);
+    item.pszText = const_cast<wchar_t*>(name.data());
     TabCtrl_InsertItem(tabs_, i, &item);
   }
 
@@ -269,9 +283,26 @@ void SettingsWindow::CreatePrivacyPage() {
 
 void SettingsWindow::CreatePermissionsPage() {
   int y = design::SettingsLayout::PageTop;
+  std::wstring permissions_intro;
+  if (localization::IsRtl(locale_)) {
+    permissions_intro = L"";
+    permissions_intro += localization::Lookup(
+        localization::StringId::Consent, locale_);
+    permissions_intro += L": ";
+    permissions_intro += localization::Lookup(
+        localization::StringId::Denied, locale_);
+    permissions_intro += L" / ";
+    permissions_intro += localization::Lookup(
+        localization::StringId::Allowed, locale_);
+    permissions_intro += L" - ";
+    permissions_intro += localization::Lookup(
+        localization::StringId::LocalOnly, locale_);
+  } else {
+    permissions_intro =
+        L"All capabilities default to Deny. Checking a box is explicit local consent; unchecking revokes it immediately.";
+  }
   HWND intro = AddStatic(
-      hwnd_,
-      L"All capabilities default to Deny. Checking a box is explicit local consent; unchecking revokes it immediately.",
+      hwnd_, permissions_intro.c_str(),
       design::SettingsLayout::PageLabelStart,
       y, 800, design::SettingsLayout::IntroHeight);
   page_controls_[1].push_back(intro);

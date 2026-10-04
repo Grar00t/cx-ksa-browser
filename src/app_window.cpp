@@ -8,6 +8,7 @@
 #include "browser/bookmark_service.h"
 #include "browser/history_service.h"
 #include "browser/tab_manager.h"
+#include "localization/strings.h"
 #include "mcp/allowlist_dialog.h"
 #include "mcp/mcp_client.h"
 
@@ -233,18 +234,30 @@ void AppWindow::CreateMenus() {
     return;
   }
 
-  AppendMenuW(browser_menu, MF_STRING, kNewTab, L"New Tab");
-  AppendMenuW(browser_menu, MF_STRING, kCloseTab, L"Close Tab");
+  AppendMenuW(
+      browser_menu, MF_STRING, kNewTab,
+      cx::localization::Text(
+          cx::localization::StringId::NewTab).data());
+  AppendMenuW(
+      browser_menu, MF_STRING, kCloseTab,
+      cx::localization::Text(
+          cx::localization::StringId::CloseTab).data());
   AppendMenuW(browser_menu, MF_SEPARATOR, 0, nullptr);
   AppendMenuW(browser_menu, MF_STRING, kHistory, L"History...");
   AppendMenuW(browser_menu, MF_STRING, kBookmarks, L"Bookmarks...");
   AppendMenuW(browser_menu, MF_SEPARATOR, 0, nullptr);
+  std::wstring settings_text(
+      cx::localization::Text(
+          cx::localization::StringId::SettingsAndPrivacy));
+  settings_text += L"...";
   AppendMenuW(
       browser_menu, MF_STRING, kSettings,
-      L"Settings & Privacy...");
+      settings_text.c_str());
   AppendMenuW(
       menu_bar, MF_POPUP,
-      reinterpret_cast<UINT_PTR>(browser_menu), L"Browser");
+      reinterpret_cast<UINT_PTR>(browser_menu),
+      cx::localization::Text(
+          cx::localization::StringId::Browser).data());
 
   AppendMenuW(agent_menu, MF_STRING, kAgentStart, L"Start Agent...");
   AppendMenuW(agent_menu, MF_STRING, kAgentStop, L"Stop Agent");
@@ -254,14 +267,18 @@ void AppWindow::CreateMenus() {
       L"Revoke All Permissions...");
   AppendMenuW(
       menu_bar, MF_POPUP,
-      reinterpret_cast<UINT_PTR>(agent_menu), L"Agent");
+      reinterpret_cast<UINT_PTR>(agent_menu),
+      cx::localization::Text(
+          cx::localization::StringId::Agent).data());
 
   AppendMenuW(
       mcp_menu, MF_STRING, kMcpAllowlist,
       L"Allowed Servers...");
   AppendMenuW(
       menu_bar, MF_POPUP,
-      reinterpret_cast<UINT_PTR>(mcp_menu), L"MCP");
+      reinterpret_cast<UINT_PTR>(mcp_menu),
+      cx::localization::Text(
+          cx::localization::StringId::Mcp).data());
 
   SetMenu(hwnd_, menu_bar);
 }
@@ -361,13 +378,27 @@ void AppWindow::CreateBrowserControls() {
         tooltip_, HWND_TOPMOST,
         0, 0, 0, 0,
         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-    AddTooltip(back_button_, L"Back");
-    AddTooltip(forward_button_, L"Forward");
-    AddTooltip(reload_button_, L"Reload");
-    AddTooltip(go_button_, L"Navigate");
-    AddTooltip(bookmark_button_, L"Save bookmark locally");
-    AddTooltip(new_tab_button_, L"New tab");
-    AddTooltip(close_tab_button_, L"Close tab");
+    AddTooltip(
+        back_button_, cx::localization::Text(
+            cx::localization::StringId::Back).data());
+    AddTooltip(
+        forward_button_, cx::localization::Text(
+            cx::localization::StringId::Forward).data());
+    AddTooltip(
+        reload_button_, cx::localization::Text(
+            cx::localization::StringId::Reload).data());
+    AddTooltip(
+        go_button_, cx::localization::Text(
+            cx::localization::StringId::Navigate).data());
+    AddTooltip(
+        bookmark_button_, cx::localization::Text(
+            cx::localization::StringId::SaveBookmarkLocally).data());
+    AddTooltip(
+        new_tab_button_, cx::localization::Text(
+            cx::localization::StringId::NewTab).data());
+    AddTooltip(
+        close_tab_button_, cx::localization::Text(
+            cx::localization::StringId::CloseTab).data());
   }
 
   SendMessageW(
@@ -588,10 +619,16 @@ void AppWindow::RefreshTabs() {
 
   std::unordered_map<std::wstring, int> totals;
   for (const auto& tab : tabs_.tabs()) {
-    const std::wstring base = Utf8ToWide(
-        tab.title.empty() ? std::string_view("New Tab")
-                          : std::string_view(tab.title));
-    ++totals[base.empty() ? std::wstring(L"New Tab") : base];
+    const bool default_title =
+        tab.title.empty() || tab.title == "New Tab";
+    const std::wstring base = default_title
+        ? std::wstring(cx::localization::Text(
+              cx::localization::StringId::NewTab))
+        : Utf8ToWide(tab.title);
+    ++totals[base.empty()
+        ? std::wstring(cx::localization::Text(
+              cx::localization::StringId::NewTab))
+        : base];
   }
 
   std::unordered_map<std::wstring, int> seen;
@@ -599,11 +636,15 @@ void AppWindow::RefreshTabs() {
   int selected = -1;
   int index = 0;
   for (const auto& tab : tabs_.tabs()) {
-    std::wstring base = Utf8ToWide(
-        tab.title.empty() ? std::string_view("New Tab")
-                          : std::string_view(tab.title));
+    const bool default_title =
+        tab.title.empty() || tab.title == "New Tab";
+    std::wstring base = default_title
+        ? std::wstring(cx::localization::Text(
+              cx::localization::StringId::NewTab))
+        : Utf8ToWide(tab.title);
     if (base.empty()) {
-      base = L"New Tab";
+      base = cx::localization::Text(
+          cx::localization::StringId::NewTab);
     }
 
     std::wstring suffix;

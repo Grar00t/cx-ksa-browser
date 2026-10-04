@@ -42,7 +42,7 @@ The central design tokens are defined in `src/ui/design_tokens.h`. `src/ui/najdi
 - Compact control density with clear hierarchy.
 - Use native Windows behavior where it improves reliability and accessibility.
 - Keep WebView2 content visually separate from CX-owned chrome.
-- Unicode Win32 controls and Segoe UI are used for Arabic-friendly rendering. `theme::ApplyLayoutDirection` provides an exercised Win32 RTL/LTR mirroring hook; translated Arabic copy and a user-facing language switch are separate work and are not claimed yet.
+- Unicode Win32 controls use Segoe UI with a local Tahoma Arabic fallback. P13 adds a central English/Arabic core string table and applies the exercised RTL/LTR mirroring hook to Settings & Privacy when Arabic is selected; WebView content is not mirrored. Complete translation of all secondary copy is separate work and is not claimed yet.
 - Agent and MCP consent state must remain obvious and must never be hidden by styling.
 - Privacy/security controls must favor clarity over visual novelty.
 

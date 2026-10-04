@@ -1,5 +1,7 @@
 #include "ui/permission_dialog.h"
 
+#include "localization/strings.h"
+
 #include <string>
 
 namespace cx::ui {
@@ -16,9 +18,14 @@ bool PermissionDialog::Request(
       capability.id.begin(), capability.id.end());
   message += L"\n\n";
   message += capability.description;
+  message += L"\n\n";
+  message += localization::Text(
+      localization::StringId::Consent);
+  message += L": ";
+  message += localization::Text(
+      localization::StringId::Denied);
   message +=
-      L"\n\nDefault is Deny. "
-      L"Choose Yes only if you want this capability enabled.";
+      L" by default. Choose Yes only if you want this capability enabled.";
 
   return MessageBoxW(
              owner,

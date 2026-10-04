@@ -1,7 +1,7 @@
 # Project State
 
 ## Current Status
-Phase: P12 browser-chrome work is verified locally on `prompt-P12-browser-chrome`, based on P11 without merging to `main`.
+Phase: P13 Arabic-locale readiness is verified locally on `prompt-P13-arabic-locale`, based on P12 without merging to `main`.
 
 CX now includes final user/developer documentation, real screenshots, expanded unit/integration/UI/security/performance tests, an enforced line-coverage gate, Windows packaging, portable packaging, and a GitHub Actions workflow.
 
@@ -22,6 +22,38 @@ Developer-facing:
 Screenshots:
 - `docs/screenshots/cx-main.png`.
 - `docs/screenshots/settings-privacy.png`.
+
+## P13 Arabic Locale Readiness
+Verified on `prompt-P13-arabic-locale`:
+- central bilingual string table: `src/localization/strings.{h,cpp}`, built as `cx_localization`
+- core English/Arabic entries exist for New Tab, Reload, Go, Bookmark, Settings, Privacy, Agent, MCP, Consent, Denied, Allowed, and Local only; browser/settings navigation labels also use the same table
+- locale selection uses local process state only: optional `CX_LOCALE` override first, then the Windows user UI language; unknown locale names fall back to English
+- main browser menus/tooltips and default visible New Tab titles consume the localization table without changing persisted tab/session data
+- Arabic Settings & Privacy uses `WS_EX_LAYOUTRTL | WS_EX_RTLREADING`; its tab painter switches to RTL/right-aligned text while English remains LTR
+- Arabic Settings window title and page-tab labels are localized; detailed secondary copy is not fully translated and is not claimed as complete localization
+- the main browser window is not mirrored for Arabic; executed probe: `ARABIC_MAIN_WINDOW_RTL=False`. WebView2 viewport/layout code was not given RTL flags
+- typography remains local-only: Segoe UI primary with Tahoma + `ARABIC_CHARSET` fallback if primary font creation fails; no font download or remote asset was added
+- added-line scan found no new URL, Perplexity/Comet/Chromium/CRX, telemetry, analytics, crash-upload, remote-update, cloud-sync, or `@font-face` reference
+- an initial Arabic tab-text assertion exposed an ANSI test-macro mismatch; the test was corrected to use explicit `TCM_GETITEMW`, then the full suite passed
+
+Executed commands:
+- `cmake -S . -B build`
+- `cmake --build build --config Release`
+- `ctest --test-dir build -C Release --output-on-failure`
+- `.\build\tests-bin\storage_tests.exe --gtest_filter='LocalizationTest.*:DesignSystemTest.*:PrivacyUiTest.SettingsWindowCreatesFourPagesAndPersistsToggle:PrivacyUiTest.ArabicSettingsWindowUsesRtlAndLocalizedTabs'`
+- `.\build\tests-bin\storage_tests.exe --gtest_brief=1`
+
+P13 verification results on 2026-10-04:
+- PASS: Release build produced `build/Release/cx.exe`; only the existing MSB8029 environment warning remained
+- PASS: CTest 1/1
+- PASS: full GoogleTest 76/76 from 20 suites
+- PASS: focused localization/design/settings set 5/5
+- PASS: English Settings window regression and Arabic RTL/localized-tab test
+- observed performance in the final full-suite run: new-tab P95 6.9093 ms; BrowserTest max new-tab 4.7796 ms; 100 config round trips 201.492 ms
+- P13 coverage gate: NOT_RUN
+- P13 installer/portable packaging: NOT_RUN
+- P13 physical Arabic keyboard/input-method testing: NOT_RUN
+- complete translation of all dialogs, history/bookmark windows, and long-form explanatory copy: NOT_IMPLEMENTED / not claimed
 
 ## P12 Browser Chrome
 Verified on `prompt-P12-browser-chrome`:

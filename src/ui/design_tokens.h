@@ -28,6 +28,7 @@ struct Spacing final {
 
 struct Typography final {
   inline static constexpr wchar_t Family[] = L"Segoe UI";
+  inline static constexpr wchar_t ArabicFallbackFamily[] = L"Tahoma";
   static constexpr int BodyHeight = -15;
   static constexpr int CompactHeight = -14;
   static constexpr int WeightNormal = FW_NORMAL;

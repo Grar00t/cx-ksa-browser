@@ -43,7 +43,7 @@ UI:
 - PrivacyDashboard reports current local state.
 - AllowlistDialog manages MCP entries.
 - History and bookmark dialogs remain local.
-- The design language is documented in `docs/UI_DESIGN.md`; Arabic rendering is supported by Unicode controls, while full RTL localization is not yet claimed.
+- The design language is documented in `docs/UI_DESIGN.md`; P13 adds a central English/Arabic core string table and RTL Settings/Privacy layout. Full translation of every secondary dialog and explanatory string is not yet claimed.
 
 Packaging:
 - Inno Setup produces a per-user installer.
