@@ -19,6 +19,7 @@
 #include <utility>
 
 using Microsoft::WRL::Callback;
+namespace design = cx::ui::design;
 
 namespace {
 constexpr wchar_t kWindowClass[] = L"CXBuildWindowClass";
@@ -145,7 +146,8 @@ bool AppWindow::Create(HINSTANCE instance, int) {
 
   hwnd_ = CreateWindowExW(
       0, kWindowClass, kWindowTitle, WS_OVERLAPPEDWINDOW,
-      CW_USEDEFAULT, CW_USEDEFAULT, 1024, 768,
+      CW_USEDEFAULT, CW_USEDEFAULT,
+      design::Window::AppWidth, design::Window::AppHeight,
       nullptr, nullptr, instance, this);
   if (!hwnd_) return false;
 
@@ -156,7 +158,8 @@ bool AppWindow::Create(HINSTANCE instance, int) {
 
   ShowWindow(hwnd_, SW_SHOWNORMAL);
   SetWindowPos(
-      hwnd_, nullptr, 0, 0, 1024, 768,
+      hwnd_, nullptr, 0, 0,
+      design::Window::AppWidth, design::Window::AppHeight,
       SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
   UpdateWindow(hwnd_);
   InitializeWebView();
@@ -214,56 +217,78 @@ void AppWindow::CreateBrowserControls() {
       0, WC_TABCONTROLW, L"",
       WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS |
           TCS_TABS | TCS_SINGLELINE | TCS_OWNERDRAWFIXED,
-      0, 0, 100, 32,
+      0, 0,
+      design::Density::MinimumInputWidth,
+      design::Density::TabHeight,
       hwnd_, nullptr, nullptr, nullptr);
   cx::ui::theme::StyleTabControl(tab_strip_);
 
   back_button_ = CreateWindowExW(
       0, L"BUTTON", L"<",
       WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
-      0, 0, 36, 30,
+      0, 0,
+      design::Density::NavigationButtonWidth,
+      design::Density::ControlHeight,
       hwnd_, reinterpret_cast<HMENU>(kBack), nullptr, nullptr);
   forward_button_ = CreateWindowExW(
       0, L"BUTTON", L">",
       WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
-      0, 0, 36, 30,
+      0, 0,
+      design::Density::NavigationButtonWidth,
+      design::Density::ControlHeight,
       hwnd_, reinterpret_cast<HMENU>(kForward), nullptr, nullptr);
   reload_button_ = CreateWindowExW(
       0, L"BUTTON", L"Reload",
       WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
-      0, 0, 60, 30,
+      0, 0,
+      design::Density::ReloadButtonWidth,
+      design::Density::ControlHeight,
       hwnd_, reinterpret_cast<HMENU>(kReload), nullptr, nullptr);
   address_bar_ = CreateWindowExW(
       0, L"EDIT", L"",
       WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
-      0, 0, 100, 30,
+      0, 0,
+      design::Density::MinimumInputWidth,
+      design::Density::ControlHeight,
       hwnd_, nullptr, nullptr, nullptr);
+  cx::ui::theme::StyleBorderedSurface(address_bar_);
   go_button_ = CreateWindowExW(
       0, L"BUTTON", L"Go",
       WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
-      0, 0, 44, 30,
+      0, 0,
+      design::Density::GoButtonWidth,
+      design::Density::ControlHeight,
       hwnd_, reinterpret_cast<HMENU>(kGo), nullptr, nullptr);
+  cx::ui::theme::MarkPrimaryAction(go_button_);
   bookmark_button_ = CreateWindowExW(
       0, L"BUTTON", L"Bookmark",
       WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
-      0, 0, 78, 30,
+      0, 0,
+      design::Density::BookmarkButtonWidth,
+      design::Density::ControlHeight,
       hwnd_, reinterpret_cast<HMENU>(kBookmark), nullptr, nullptr);
   new_tab_button_ = CreateWindowExW(
       0, L"BUTTON", L"+",
       WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
-      0, 0, 34, 30,
+      0, 0,
+      design::Density::IconButtonWidth,
+      design::Density::ControlHeight,
       hwnd_, reinterpret_cast<HMENU>(kNewTab), nullptr, nullptr);
   close_tab_button_ = CreateWindowExW(
       0, L"BUTTON", L"x",
       WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
-      0, 0, 34, 30,
+      0, 0,
+      design::Density::IconButtonWidth,
+      design::Density::ControlHeight,
       hwnd_, reinterpret_cast<HMENU>(kCloseTab), nullptr, nullptr);
 
   SendMessageW(
       address_bar_,
       EM_SETMARGINS,
       EC_LEFTMARGIN | EC_RIGHTMARGIN,
-      MAKELPARAM(10, 10));
+      MAKELPARAM(
+          design::Density::InputTextInset,
+          design::Density::InputTextInset));
   cx::ui::theme::ApplyFontToChildren(hwnd_);
   LayoutControls();
 }
@@ -381,37 +406,72 @@ void AppWindow::LayoutControls() {
           ? client.bottom - client.top
           : 0);
 
-  const int tab_height = 34;
-  const int toolbar_y = tab_height + 2;
-  const int toolbar_height = 34;
-  const int content_y = toolbar_y + toolbar_height + 4;
+  const int tab_height = design::Density::TabHeight;
+  const int toolbar_y =
+      tab_height + design::Spacing::Xxs;
+  const int toolbar_height =
+      design::Density::ToolbarHeight;
+  const int content_y =
+      toolbar_y + toolbar_height + design::Spacing::Xs;
+  const int control_height =
+      design::Density::ControlHeight;
+  const int gap = design::Spacing::Sm;
 
   MoveWindow(tab_strip_, 0, 0, width, tab_height, TRUE);
 
-  int x = 6;
-  MoveWindow(back_button_, x, toolbar_y, 36, 30, TRUE);
-  x += 40;
-  MoveWindow(forward_button_, x, toolbar_y, 36, 30, TRUE);
-  x += 40;
-  MoveWindow(reload_button_, x, toolbar_y, 60, 30, TRUE);
-  x += 64;
+  int x = design::Spacing::Sm;
+  MoveWindow(
+      back_button_, x, toolbar_y,
+      design::Density::NavigationButtonWidth,
+      control_height, TRUE);
+  x += design::Density::NavigationButtonWidth + gap;
+  MoveWindow(
+      forward_button_, x, toolbar_y,
+      design::Density::NavigationButtonWidth,
+      control_height, TRUE);
+  x += design::Density::NavigationButtonWidth + gap;
+  MoveWindow(
+      reload_button_, x, toolbar_y,
+      design::Density::ReloadButtonWidth,
+      control_height, TRUE);
+  x += design::Density::ReloadButtonWidth + gap;
 
-  const int right_fixed = 44 + 6 + 78 + 6 + 34 + 6 + 34 + 12;
+  const int right_fixed =
+      design::Density::GoButtonWidth + gap +
+      design::Density::BookmarkButtonWidth + gap +
+      design::Density::IconButtonWidth + gap +
+      design::Density::IconButtonWidth +
+      design::Spacing::Lg;
   const int requested_address_width =
       width - x - right_fixed;
   const int address_width =
-      requested_address_width > 120
+      requested_address_width >
+              design::Density::MinimumInputWidth
           ? requested_address_width
-          : 120;
-  MoveWindow(address_bar_, x, toolbar_y, address_width, 30, TRUE);
-  x += address_width + 6;
-  MoveWindow(go_button_, x, toolbar_y, 44, 30, TRUE);
-  x += 50;
-  MoveWindow(bookmark_button_, x, toolbar_y, 78, 30, TRUE);
-  x += 84;
-  MoveWindow(new_tab_button_, x, toolbar_y, 34, 30, TRUE);
-  x += 40;
-  MoveWindow(close_tab_button_, x, toolbar_y, 34, 30, TRUE);
+          : design::Density::MinimumInputWidth;
+  MoveWindow(
+      address_bar_, x, toolbar_y,
+      address_width, control_height, TRUE);
+  x += address_width + gap;
+  MoveWindow(
+      go_button_, x, toolbar_y,
+      design::Density::GoButtonWidth,
+      control_height, TRUE);
+  x += design::Density::GoButtonWidth + gap;
+  MoveWindow(
+      bookmark_button_, x, toolbar_y,
+      design::Density::BookmarkButtonWidth,
+      control_height, TRUE);
+  x += design::Density::BookmarkButtonWidth + gap;
+  MoveWindow(
+      new_tab_button_, x, toolbar_y,
+      design::Density::IconButtonWidth,
+      control_height, TRUE);
+  x += design::Density::IconButtonWidth + gap;
+  MoveWindow(
+      close_tab_button_, x, toolbar_y,
+      design::Density::IconButtonWidth,
+      control_height, TRUE);
 
   if (controller_) {
     RECT bounds{0, content_y, width, height};

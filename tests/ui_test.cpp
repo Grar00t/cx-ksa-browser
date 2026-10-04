@@ -8,6 +8,8 @@
 #include "mcp/mcp_client.h"
 #include "mcp/rate_limiter.h"
 #include "storage/database.h"
+#include "ui/design_tokens.h"
+#include "ui/najdi_theme.h"
 #include "ui/privacy_dashboard.h"
 #include "ui/settings_window.h"
 
@@ -62,6 +64,45 @@ protected:
   std::filesystem::path root_;
   std::unique_ptr<cx::storage::Database> database_;
 };
+
+
+TEST(DesignSystemTest, TokensRespectNajdiConstraints) {
+  using namespace cx::ui::design;
+
+  EXPECT_LE(Radius::Control, 4);
+  EXPECT_LE(Radius::Surface, 4);
+  EXPECT_EQ(Border::Standard, 1);
+  EXPECT_LE(Density::ControlHeight, 32);
+  EXPECT_STREQ(Typography::Family, L"Segoe UI");
+  EXPECT_NE(Color::Background, Color::Text);
+  EXPECT_NE(Focus::Primary, Focus::Secondary);
+  EXPECT_EQ(
+      SettingsLayout::PageContentStart,
+      SettingsLayout::PageLabelStart + Spacing::Md);
+}
+
+TEST(DesignSystemTest, RtlDirectionCanBeAppliedAndRemoved) {
+  HWND window = CreateWindowExW(
+      0, L"STATIC", L"",
+      WS_OVERLAPPED,
+      0, 0, 100, 100,
+      nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+  ASSERT_NE(window, nullptr);
+
+  cx::ui::theme::ApplyLayoutDirection(window, true);
+  const LONG_PTR rtl =
+      GetWindowLongPtrW(window, GWL_EXSTYLE);
+  EXPECT_NE(rtl & WS_EX_LAYOUTRTL, 0);
+  EXPECT_NE(rtl & WS_EX_RTLREADING, 0);
+
+  cx::ui::theme::ApplyLayoutDirection(window, false);
+  const LONG_PTR ltr =
+      GetWindowLongPtrW(window, GWL_EXSTYLE);
+  EXPECT_EQ(ltr & WS_EX_LAYOUTRTL, 0);
+  EXPECT_EQ(ltr & WS_EX_RTLREADING, 0);
+
+  DestroyWindow(window);
+}
 
 TEST(P07SettingsSchema, PrivacySettingsAreVisibleAndPrivacyFirst) {
   const auto& settings =

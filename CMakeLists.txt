@@ -123,6 +123,7 @@ if(MSVC)
 endif()
 
 add_library(cx_ui STATIC
+  src/ui/design_tokens.h
   src/ui/najdi_theme.cpp
   src/ui/najdi_theme.h
   src/ui/settings_window.cpp

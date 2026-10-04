@@ -16,6 +16,8 @@
 #include <iterator>
 #include <string>
 
+namespace design = cx::ui::design;
+
 namespace cx::ui {
 namespace {
 
@@ -148,7 +150,8 @@ void SettingsWindow::Show(HWND owner) {
       L"CX Settings & Privacy",
       WS_OVERLAPPEDWINDOW | WS_VISIBLE,
       CW_USEDEFAULT, CW_USEDEFAULT,
-      900, 680,
+      design::Window::SettingsWidth,
+      design::Window::SettingsHeight,
       owner_, nullptr, instance, this);
   if (!hwnd_) {
     return;
@@ -177,19 +180,28 @@ void SettingsWindow::Refresh() {
 
 void SettingsWindow::CreateControls() {
   dashboard_label_ = CreateWindowExW(
-      WS_EX_CLIENTEDGE,
+      0,
       L"STATIC",
       L"",
       WS_CHILD | WS_VISIBLE | SS_LEFT,
-      16, 16, 840, 92,
+      design::SettingsLayout::OuterInset,
+      design::SettingsLayout::OuterInset,
+      design::Window::SettingsWidth -
+          (2 * design::SettingsLayout::OuterInset),
+      design::SettingsLayout::DashboardHeight,
       hwnd_, nullptr, nullptr, nullptr);
+  theme::StyleBorderedSurface(dashboard_label_);
 
   tabs_ = CreateWindowExW(
       0, WC_TABCONTROLW, L"",
       WS_CHILD | WS_VISIBLE |
           WS_CLIPSIBLINGS | WS_TABSTOP |
           TCS_OWNERDRAWFIXED,
-      16, 120, 840, 500,
+      design::SettingsLayout::OuterInset,
+      design::SettingsLayout::TabsTop,
+      design::Window::SettingsWidth -
+          (2 * design::SettingsLayout::OuterInset),
+      500,
       hwnd_, nullptr,
       GetModuleHandleW(nullptr), nullptr);
   theme::StyleTabControl(tabs_);
@@ -215,13 +227,14 @@ void SettingsWindow::CreateControls() {
 }
 
 void SettingsWindow::CreatePrivacyPage() {
-  int y = 172;
+  int y = design::SettingsLayout::PageTop;
   HWND intro = AddStatic(
       hwnd_,
       L"Privacy-first defaults. Every switch below is stored immediately in local SQLite.",
-      40, y, 790, 24);
+      design::SettingsLayout::PageLabelStart,
+      y, 790, design::Spacing::Xxl);
   page_controls_[0].push_back(intro);
-  y += 36;
+  y += design::SettingsLayout::IntroHeight;
 
   const auto& specs = PrivacySettings();
   for (std::size_t i = 0; i < specs.size(); ++i) {
@@ -229,32 +242,41 @@ void SettingsWindow::CreatePrivacyPage() {
         static_cast<WORD>(kPrivacyBase + i);
     HWND box = AddButton(
         hwnd_, specs[i].label, id,
-        48, y, 620, 28,
+        design::SettingsLayout::PageContentStart,
+        y, 620, design::Density::SettingsCheckboxHeight,
         BS_AUTOCHECKBOX);
     page_controls_[0].push_back(box);
-    y += 34;
+    y += design::Density::SettingsCheckboxHeight +
+        design::Spacing::Sm;
   }
 
   HWND sync = AddStatic(
       hwnd_,
       L"WebView sync: disabled by design (not configurable).",
-      48, y + 6, 700, 24);
+      design::SettingsLayout::PageContentStart,
+      y + design::Spacing::Sm,
+      700, design::Spacing::Xxl);
   page_controls_[0].push_back(sync);
   HWND telemetry = AddStatic(
       hwnd_,
       L"CX application telemetry upload: none (not configurable).",
-      48, y + 34, 700, 24);
+      design::SettingsLayout::PageContentStart,
+      y + design::Density::SettingsCheckboxHeight +
+          design::Spacing::Sm,
+      700, design::Spacing::Xxl);
   page_controls_[0].push_back(telemetry);
 }
 
 void SettingsWindow::CreatePermissionsPage() {
-  int y = 172;
+  int y = design::SettingsLayout::PageTop;
   HWND intro = AddStatic(
       hwnd_,
       L"All capabilities default to Deny. Checking a box is explicit local consent; unchecking revokes it immediately.",
-      40, y, 800, 36);
+      design::SettingsLayout::PageLabelStart,
+      y, 800, design::SettingsLayout::IntroHeight);
   page_controls_[1].push_back(intro);
-  y += 44;
+  y += design::SettingsLayout::IntroHeight +
+      design::Spacing::Md;
 
   const agent::Capability capabilities[] = {
       agent::Capability::AgentRun,
@@ -280,81 +302,97 @@ void SettingsWindow::CreatePermissionsPage() {
         hwnd_,
         label.c_str(),
         static_cast<WORD>(kPermissionBase + i),
-        48, y, 720, 28,
+        design::SettingsLayout::PageContentStart,
+        y, 720, design::Density::SettingsCheckboxHeight,
         BS_AUTOCHECKBOX);
     page_controls_[1].push_back(box);
     permission_controls_.push_back(
         {box, capabilities[i]});
-    y += 36;
+    y += design::Density::SettingsCheckboxHeight +
+        design::Spacing::Md;
   }
 }
 
 void SettingsWindow::CreateMcpPage() {
-  int y = 172;
+  int y = design::SettingsLayout::PageTop;
   HWND intro = AddStatic(
       hwnd_,
       L"Only executables in the explicit local allowlist can be launched. MCP remains gated by the mcp.connect permission.",
-      40, y, 800, 36);
+      design::SettingsLayout::PageLabelStart,
+      y, 800, design::SettingsLayout::IntroHeight);
   page_controls_[2].push_back(intro);
-  y += 44;
+  y += design::SettingsLayout::IntroHeight +
+      design::Spacing::Md;
 
   mcp_list_ = CreateWindowExW(
-      WS_EX_CLIENTEDGE,
+      0,
       L"LISTBOX",
       nullptr,
       WS_CHILD | WS_VISIBLE |
           WS_VSCROLL | LBS_NOINTEGRALHEIGHT,
-      48, y, 760, 240,
+      design::SettingsLayout::PageContentStart,
+      y, 760, design::SettingsLayout::ListHeight,
       hwnd_, nullptr, nullptr, nullptr);
+  theme::StyleBorderedSurface(mcp_list_);
   page_controls_[2].push_back(mcp_list_);
-  y += 252;
+  y += design::SettingsLayout::ListHeight +
+      design::Spacing::Lg;
 
   page_controls_[2].push_back(
       AddButton(
           hwnd_, L"Manage Allowlist...",
           kMcpManage,
-          48, y, 160, 32));
+          design::SettingsLayout::PageContentStart,
+          y, 160, design::Density::SettingsButtonHeight));
   page_controls_[2].push_back(
       AddButton(
           hwnd_, L"Disconnect Active MCP",
           kMcpDisconnect,
-          220, y, 180, 32));
+          220, y, 180,
+          design::Density::SettingsButtonHeight));
   page_controls_[2].push_back(
       AddButton(
           hwnd_, L"Refresh",
           kMcpRefresh,
-          412, y, 100, 32));
+          412, y, 100,
+          design::Density::SettingsButtonHeight));
 }
 
 void SettingsWindow::CreateDataPage() {
-  int y = 172;
+  int y = design::SettingsLayout::PageTop;
   data_label_ = AddStatic(
       hwnd_,
       L"",
-      40, y, 800, 150);
+      design::SettingsLayout::PageLabelStart,
+      y, 800, design::SettingsLayout::DataSummaryHeight);
   page_controls_[3].push_back(data_label_);
-  y += 164;
+  y += design::SettingsLayout::DataSummaryHeight +
+      design::Spacing::Lg + design::Spacing::Xxs;
 
   page_controls_[3].push_back(
       AddButton(
           hwnd_, L"Clear Local History...",
           kDataClearHistory,
-          48, y, 170, 32));
+          design::SettingsLayout::PageContentStart,
+          y, 170, design::Density::SettingsButtonHeight));
   page_controls_[3].push_back(
       AddButton(
           hwnd_, L"Clear Bookmarks...",
           kDataClearBookmarks,
-          230, y, 150, 32));
+          230, y, 150,
+          design::Density::SettingsButtonHeight));
   page_controls_[3].push_back(
       AddButton(
           hwnd_, L"Refresh Data Size",
           kDataRefresh,
-          392, y, 150, 32));
+          392, y, 150,
+          design::Density::SettingsButtonHeight));
   page_controls_[3].push_back(
       AddButton(
           hwnd_, L"Open Local Data Folder",
           kDataOpenFolder,
-          554, y, 190, 32));
+          554, y, 190,
+          design::Density::SettingsButtonHeight));
 }
 
 void SettingsWindow::Layout() {
@@ -368,17 +406,30 @@ void SettingsWindow::Layout() {
       static_cast<int>(client.right - client.left);
   const int height =
       static_cast<int>(client.bottom - client.top);
+  const int outer = design::SettingsLayout::OuterInset;
+  const int minimum_width =
+      design::SettingsLayout::PageContentStart;
+  const int content_width =
+      width > (2 * outer + minimum_width)
+          ? width - (2 * outer)
+          : minimum_width;
+  const int tabs_height =
+      height > design::SettingsLayout::PageTop
+          ? height - design::SettingsLayout::TabsTop - outer
+          : design::Density::TabHeight + design::Spacing::Xl;
 
   MoveWindow(
       dashboard_label_,
-      16, 16,
-      width > 48 ? width - 32 : 16,
-      94, TRUE);
+      outer, outer,
+      content_width,
+      design::SettingsLayout::DashboardHeight,
+      TRUE);
   MoveWindow(
       tabs_,
-      16, 122,
-      width > 48 ? width - 32 : 16,
-      height > 150 ? height - 138 : 40,
+      outer,
+      design::SettingsLayout::TabsTop,
+      content_width,
+      tabs_height,
       TRUE);
 }
 

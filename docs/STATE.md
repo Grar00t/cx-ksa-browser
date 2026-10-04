@@ -1,7 +1,7 @@
 # Project State
 
 ## Current Status
-Phase: P10 acceptance criteria remain verified. Current UI refinement is on `task/najdi-ui-20261004`, based on the verified P10 line without merging to `main`.
+Phase: P11 design-system work is verified locally on `prompt-P11-design-system`, based on the prior Najdi UI branch without merging to `main`.
 
 CX now includes final user/developer documentation, real screenshots, expanded unit/integration/UI/security/performance tests, an enforced line-coverage gate, Windows packaging, portable packaging, and a GitHub Actions workflow.
 
@@ -22,6 +22,28 @@ Developer-facing:
 Screenshots:
 - `docs/screenshots/cx-main.png`.
 - `docs/screenshots/settings-privacy.png`.
+
+## P11 Design System
+Verified on `prompt-P11-design-system`:
+- central tokens: `src/ui/design_tokens.h`
+- token categories: color, spacing, typography, radius, border, focus, density, window/settings layout
+- native renderer: `src/ui/najdi_theme.{h,cpp}`
+- 3 px control radius / 4 px maximum radius; 1 px standard borders
+- sand focus treatment and olive primary-action treatment
+- browser chrome and Settings metrics consume shared density/spacing tokens instead of duplicated hardcoded sizes where practical
+- `theme::ApplyLayoutDirection` provides an RTL/LTR Win32 mirroring hook; `DesignSystemTest.RtlDirectionCanBeAppliedAndRemoved` passed
+- WebView2 integration was not changed
+- visual inspection completed on the locally built `build/Release/cx.exe`
+- added-line diff scan: no new URLs, derived-browser asset references, telemetry, analytics, crash-upload, remote-update, or cloud-sync references
+- Cppcheck completed on the changed first-party C++ sources; it reported one pre-existing performance warning in `AppWindow::OpenLibraryUrl(std::string url)`
+
+P11 local verification on 2026-10-04:
+- PASS: Release configure/build, exit code 0
+- PASS: CTest 1/1
+- PASS: GoogleTest 73/73 from 19 suites
+- PASS: line coverage 80.92% (2524/3119), threshold 80%
+- New-tab P95 during coverage run: 2.6786 ms
+- 100 config save/load round trips during coverage run: 250.012 ms
 
 ## Najdi UI Refinement
 Verified on `task/najdi-ui-20261004`:
@@ -64,10 +86,10 @@ Measured scope:
 - `src/`
 - excluding only `src/main.cpp` and `src/app_window.cpp`, the executable entrypoint and WebView2 host shell.
 
-Latest successful local gate on `task/najdi-ui-20261004`:
-- PASS: 80.81% line coverage.
-- covered: 2476.
-- valid: 3064.
+Latest successful local gate on `prompt-P11-design-system`:
+- PASS: 80.92% line coverage.
+- covered: 2524.
+- valid: 3119.
 - threshold: 80%.
 
 P10 baseline before the UI refinement was 81.26% (2359/2903).
@@ -75,9 +97,9 @@ P10 baseline before the UI refinement was 81.26% (2359/2903).
 The coverage script performs a clean Debug rebuild of `storage_tests` before measurement and rejects empty/invalid 0/0 reports.
 
 ## Performance
-Latest successful coverage-gate run on the UI branch:
-- New-tab P95: 2.9734 ms, threshold <100 ms.
-- 100 config save/load round trips: 210.923 ms, threshold <1000 ms.
+Latest successful coverage-gate run on the P11 design-system branch:
+- New-tab P95: 2.6786 ms, threshold <100 ms.
+- 100 config save/load round trips: 250.012 ms, threshold <1000 ms.
 
 Release regression run also passed both performance tests.
 
@@ -114,7 +136,7 @@ CI status: PASS on GitHub Actions run `37186418199` for commit `13d6c1f23ff4c692
 
 ## Acceptance Criteria
 - [x] All requested documentation exists and is updated.
-- [x] Measured line coverage >80% on the current UI branch: 80.81%.
+- [x] Measured line coverage >80% on the current P11 branch: 80.92%.
 - [x] GitHub Actions pipeline green: run `37186418199` passed all three jobs.
 - [x] No critical first-party issue is known from the completed automated/static P10 checks; this is not a penetration-test claim.
 - [x] Release candidate ready: local RC verification passed and GitHub CI run `37186418199` passed.
