@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "project": "CX Build",
+  "phase": "P09",
+  "date": "2026-10-04",
+  "branch": "prompt-P09",
+  "base_commit": "008fd144f91124ac6d2bfb49ce7462b8f009395e",
+  "packaging_tool": {
+    "name": "Inno Setup",
+    "version": "6.7.3"
+  },
+  "artifacts": {
+    "installer": {
+      "name": "CX-Build-Setup-0.9.0.exe",
+      "bytes": 2661132,
+      "sha256": "A5954B4802BD434C0831B928FF4755C0E027C7872E76D84B30DDCBF12E4998AB",
+      "signature_status": "NotSigned"
+    },
+    "portable_zip": {
+      "name": "CX-Build-Portable-0.9.0.zip",
+      "bytes": 726757,
+      "sha256": "1BECE37823C72A8F5808739CEEE073046AAFA272369410E4164BBBBD2FF3FE43"
+    }
+  },
+  "verification": {
+    "installer_under_10mb": true,
+    "custom_install_location": true,
+    "start_menu_shortcut_created": true,
+    "optional_path_added_and_removed": true,
+    "unexpected_installed_files": 0,
+    "uninstall_registration_after_uninstall": 0,
+    "install_directory_after_uninstall": false,
+    "background_processes_after_close": 0,
+    "portable_launch": true,
+    "portable_data_redirected_local": true,
+    "portable_media": "SIMULATED_NO_REMOVABLE_DRIVE",
+    "physical_usb_test": "NOT_VERIFIED_NO_REMOVABLE_DRIVE_PRESENT",
+    "ctest": "1/1 PASS",
+    "googletest": "52/52 PASS",
+    "no_bundled_bloatware": true,
+    "auto_update_mechanism_in_installer": false
+  },
+  "code_signing": {
+    "signtool_available": true,
+    "valid_current_user_code_signing_certificate_available": false,
+    "status": "UNAVAILABLE"
+  },
+  "notes": [
+    "C: and D: were observed as fixed disks (DriveType 3); no DriveType 2 removable disk was present.",
+    "Portable behavior was verified from a relocated folder, including local data redirection and clean process exit.",
+    "Physical USB media remains unverified rather than inferred."
+  ]
+}

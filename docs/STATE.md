@@ -1,93 +1,134 @@
 # Project State
 
 ## Current Status
-Phase: P08 implemented and verified on branch `prompt-P08`.
-CX now has a versioned local JSON configuration subsystem plus local-only
-settings import/export and SQLite database backup/restore.
+Phase: P09 implemented and verified on branch `prompt-P09`.
+CX now has a real Windows installer build, clean uninstall flow, optional
+per-user PATH integration, Start Menu shortcuts, and a relocatable portable
+package.
 
-## Configuration
-Default path:
-`%APPDATA%\CX Build\config.json`
+## Packaging
+Tool: Inno Setup 6.7.3.
 
-Version 1 categories:
-- General: startup behavior, default search provider.
-- Appearance: theme, font-size percentage.
-- Privacy: cookie policy, cache policy.
-- Advanced: developer tools, experimental features.
+Installer source:
+- `installer/cx-installer.iss`
+- `installer/build_installer.ps1`
+- `installer/verify_package.ps1`
 
-Defaults are privacy-first:
-- blank startup
-- search disabled
-- block-all cookies
-- memory-only cache
-- developer tools off
-- experimental features off
+Portable launcher:
+- `portable/run_portable.bat`
 
-Writes use a temporary file plus `MoveFileExW(..., MOVEFILE_REPLACE_EXISTING |
-MOVEFILE_WRITE_THROUGH)`. Import is parsed and validated before replacing the
-current settings. Invalid imports leave the active settings unchanged.
+Install documentation:
+- `docs/INSTALL.md`
 
-A corrupt config is copied to `config.json.corrupt` when possible and the
-active config falls back to validated defaults.
+Generated `dist/` artifacts are intentionally ignored by Git.
 
-## Local-Only Boundary
-Config import/export and database backup/restore accept absolute local
-filesystem paths only. UNC paths and remote drives are rejected. P08 contains
-no sync client or network transport.
+## Installed Mode
+Default install destination:
+`%LOCALAPPDATA%\Programs\CX Build`
 
-Settings synchronization is therefore unsupported by design rather than merely
-disabled by a UI toggle.
+The destination is user-selectable. Verification installed successfully into a
+custom temporary directory containing spaces.
 
-## Database Backup And Restore
-Backup uses SQLite's online backup API to create a staged local snapshot and
-runs `PRAGMA integrity_check` before promotion.
+The installer creates:
+- CX Build Start Menu shortcut.
+- Uninstall CX Build Start Menu shortcut.
+- standard Inno uninstall registration.
+- optional current-user PATH entry only when the unchecked `addtopath` task is selected.
 
-Restore:
-1. validates the backup before closing the active database,
-2. stages and re-validates a copy,
-3. preserves the current database as `.pre-restore`,
-4. swaps the staged database into place,
-5. reopens and verifies it,
-6. rolls back to the preserved database if reopen/verification fails.
+The PATH entry is removed on uninstall. Verification also compared PATH token
+sets before and after uninstall and observed no non-CX entry changes.
 
-Verification also requires the CX schema tables and migration version >= 3, so
-an unrelated but internally valid SQLite database is rejected.
+## Package Contents
+The package contains CX-owned files only:
+- `cx.exe`
+- LICENSE
+- NOTICE
+- PRIVACY.md
+- SECURITY.md
+- `docs/INSTALL.md`
 
-## Build And Test
-`cmake --build build --config Release`
-`ctest --test-dir build -C Release --output-on-failure`
-`build\tests-bin\storage_tests.exe`
+Inno adds its own uninstaller files. Verification observed zero unexpected
+installed files before launching the application.
 
-## Verified On 2026-10-04
-- PASS: Release build produced `build/Release/cx.exe`.
-- PASS: CTest: 1/1 test target passed.
-- PASS: direct GoogleTest run: 52 tests from 13 suites, 52 passed.
-- PASS: P08 config tests: 11/11 passed.
-- PASS: exact default config path is under `%APPDATA%\CX Build\config.json`.
-- PASS: every P08 setting round-trips through JSON persistence.
-- PASS: corrupt config falls back to defaults and a subsequent load succeeds.
-- PASS: font-size validation rejects values outside 75..200.
-- PASS: import/export is local-only and validates before applying.
-- PASS: invalid import leaves current settings unchanged.
-- PASS: database backup/restore restores settings, history, and bookmarks from
-  the snapshot after later mutations.
-- PASS: corrupt backup is rejected without changing the open database.
-- PASS: valid non-CX SQLite is rejected without changing the open database.
-- PASS: UNC backup/restore paths are rejected by design.
-- PASS: `git diff --check` reported no whitespace errors before finalization.
+No advertising bundle, third-party offer, updater, scheduled task, or service
+is defined by P09. There is no application auto-update mechanism in the
+installer by design.
+
+## Portable Mode
+The generated portable folder/ZIP contains `cx.exe`, the project documents,
+and `run_portable.bat`.
+
+The launcher redirects `APPDATA` and `LOCALAPPDATA` to a `data` directory
+beside the executable. Verification launched CX from a relocated temporary
+folder and observed the SQLite database under:
+`data\Roaming\CX Build\data.db`.
+
+No physical removable drive was present during verification. Windows reported
+C: and D: as fixed disks (DriveType 3), so the physical-USB criterion remains
+NOT_VERIFIED rather than being inferred from the relocated-folder test.
+
+## Process Exit Verification
+Installed and portable CX were both launched and closed using WM_CLOSE.
+After close, verification found:
+- 0 matching `cx.exe` processes.
+- 0 CX-owned `msedgewebview2.exe` processes tied to the tested package path.
+
+## Install/Uninstall Verification
+A real silent install/uninstall cycle verified:
+- custom install location works.
+- Start Menu shortcut exists after install.
+- optional PATH task adds the custom install directory.
+- one CX uninstall registration exists while installed.
+- uninstall completes successfully.
+- install directory is gone after uninstall.
+- Start Menu shortcut is gone after uninstall.
+- CX uninstall registration count is zero after uninstall.
+- temporary CX PATH entry is gone after uninstall.
+- final machine test state contains no CX P09 temporary install residue.
+
+## Artifacts
+Installer:
+- file: `CX-Build-Setup-0.9.0.exe`
+- size: 2,661,132 bytes (~2.54 MiB)
+- SHA256: `A5954B4802BD434C0831B928FF4755C0E027C7872E76D84B30DDCBF12E4998AB`
+
+Portable ZIP:
+- file: `CX-Build-Portable-0.9.0.zip`
+- size: 726,757 bytes
+- SHA256: `1BECE37823C72A8F5808739CEEE073046AAFA272369410E4164BBBBD2FF3FE43`
+
+## Code Signing
+`signtool.exe` is installed and available.
+No valid CurrentUser Code Signing certificate was present.
+Result: `NotSigned` / signing acceptance is unavailable, not passed.
+
+The build script will attempt SHA-256 Authenticode signing automatically when a
+valid user Code Signing certificate is available.
+
+## Regression Verification On 2026-10-04
+- PASS: CTest 1/1.
+- PASS: direct GoogleTest 52/52.
+- PASS: installer compile with Inno Setup 6.7.3.
+- PASS: installer size is below 10 MiB.
+- PASS: install + uninstall cleanup verification.
+- PASS: Start Menu shortcut.
+- PASS: optional PATH add/remove.
+- PASS: zero unexpected installed files.
+- PASS: zero CX-owned background processes after close.
+- PASS: portable launch from relocated folder.
+- PASS: portable CX data redirected beside the executable.
+- NOT_VERIFIED: physical USB media; no removable drive was connected.
+- UNAVAILABLE: code signing certificate.
 
 ## Acceptance Criteria
-- [x] Every setting is saved and restored.
-- [x] Corrupt config gracefully falls back to defaults.
-- [x] Backup/restore works without data loss in the tested snapshot and failure
-  cases.
-- [x] Settings sync is impossible through P08 APIs by design.
-- [x] Unit tests cover config validation and persistence.
+- [x] Installer <10MB.
+- [x] Install + uninstall leaves no tested CX registry/PATH/Start Menu junk.
+- [~] Portable mode works from a relocated folder; physical USB media not available to verify.
+- [x] No CX-owned background processes remain after close.
+- [ ] Code signing: signtool available, signing certificate unavailable.
 
-## Known Build Warning
-MSBuild emits MSB8029 about an intermediate/output directory being considered
-under a Temporary directory. It did not fail the Release build or tests, but it
-remains a build-environment warning rather than a P08 acceptance failure.
+## Receipt
+`docs/P09_RECEIPT.json`
 
 ## Next Prompt
-P09 (not started).
+P10 (not started).
