@@ -35,8 +35,8 @@
     "physical_usb": "NOT_VERIFIED_NO_REMOVABLE_DRIVE_PRESENT"
   },
   "github_ci": {
-    "status": "PENDING_FIRST_PUSH",
-    "run_id": null,
-    "commit": null
+    "status": "PASS",
+    "run_id": 37186418199,
+    "commit": "13d6c1f23ff4c692082a4138a0a01c35e1d6981b"
   }
 }

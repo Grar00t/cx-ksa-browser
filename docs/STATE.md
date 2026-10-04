@@ -1,7 +1,7 @@
 # Project State
 
 ## Current Status
-Phase: P10 implemented locally on branch `prompt-P10`; GitHub Actions verification is pending the first push.
+Phase: P10 acceptance criteria are verified. Local P10 implementation originated on `prompt-P10`; this verification update is on `task/p10-ci-verification-20261004`.
 
 CX now includes final user/developer documentation, real screenshots, expanded unit/integration/UI/security/performance tests, an enforced line-coverage gate, Windows packaging, portable packaging, and a GitHub Actions workflow.
 
@@ -96,14 +96,14 @@ Package verifier:
 3. installer/portable package build after build and coverage succeed.
 4. upload of Cobertura coverage and release-candidate package artifacts.
 
-CI status: PENDING_FIRST_PUSH.
+CI status: PASS on GitHub Actions run `37186418199` for commit `13d6c1f23ff4c692082a4138a0a01c35e1d6981b`. All three jobs passed: Windows build and tests, coverage gate, and installer/portable artifacts.
 
 ## Acceptance Criteria
 - [x] All requested documentation exists and is updated.
 - [x] Measured line coverage >80%: 81.26%.
-- [ ] GitHub Actions pipeline green: pending first push.
+- [x] GitHub Actions pipeline green: run `37186418199` passed all three jobs.
 - [x] No critical first-party issue is known from the completed automated/static P10 checks; this is not a penetration-test claim.
-- [ ] Release candidate ready: local RC passes; final status waits for green GitHub CI.
+- [x] Release candidate ready: local RC verification passed and GitHub CI run `37186418199` passed.
 
 ## Known Boundaries
 - WebView2 whole-process-tree zero-network is not claimed.

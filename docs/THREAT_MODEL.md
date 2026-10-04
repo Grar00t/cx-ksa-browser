@@ -21,5 +21,4 @@ MCP configuration, local databases, and user-authored files.
 - No proprietary third-party assets or extracted bundles.
 
 ## Verification Status
-This document defines intended controls only. No runtime security claims have
-been verified in P01 because no application code exists yet.
+P10 verification has executed automated first-party checks for deny-by-default agent behavior, MCP allowlisting and parser failure posture, unsafe/remote input rejection, and a local-core network endpoint delta test. These results do not claim that WebView2 or the full browser process tree is network silent; see `docs/STATE.md` and `SECURITY.md` for the verified scope and boundaries.
