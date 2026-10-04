@@ -60,6 +60,19 @@ if(MSVC)
   target_compile_options(cx_storage PRIVATE /W4 /permissive- /EHsc)
 endif()
 
+add_library(cx_config STATIC
+  src/config/config_manager.cpp
+  src/config/config_manager.h
+  src/config/settings_schema.h
+  src/config/backup_restore.cpp
+  src/config/backup_restore.h)
+target_include_directories(cx_config PUBLIC src)
+target_compile_definitions(cx_config PRIVATE UNICODE _UNICODE)
+target_link_libraries(cx_config PUBLIC cx_storage)
+if(MSVC)
+  target_compile_options(cx_config PRIVATE /W4 /permissive- /EHsc)
+endif()
+
 add_library(cx_browser STATIC
   src/browser/tab_manager.cpp
   src/browser/tab_manager.h
@@ -182,8 +195,9 @@ add_executable(storage_tests
   tests/agent_test.cpp
   tests/mcp_test.cpp
   tests/browser_test.cpp
-  tests/ui_test.cpp)
-target_link_libraries(storage_tests PRIVATE cx_ui GTest::gtest_main)
+  tests/ui_test.cpp
+  tests/config_test.cpp)
+target_link_libraries(storage_tests PRIVATE cx_ui cx_config GTest::gtest_main)
 add_dependencies(storage_tests mcp_test_server browser_crash_writer)
 if(MSVC)
   target_compile_options(storage_tests PRIVATE /W4 /permissive- /EHsc)
