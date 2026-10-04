@@ -1,7 +1,7 @@
 # Project State
 
 ## Current Status
-Phase: P10 acceptance criteria are verified. Local P10 implementation originated on `prompt-P10`; this verification update is on `task/p10-ci-verification-20261004`.
+Phase: P10 acceptance criteria remain verified. Current UI refinement is on `task/najdi-ui-20261004`, based on the verified P10 line without merging to `main`.
 
 CX now includes final user/developer documentation, real screenshots, expanded unit/integration/UI/security/performance tests, an enforced line-coverage gate, Windows packaging, portable packaging, and a GitHub Actions workflow.
 
@@ -14,6 +14,7 @@ User-facing:
 
 Developer-facing:
 - `docs/ARCHITECTURE.md`.
+- `docs/UI_DESIGN.md`.
 - `docs/BUILD.md`.
 - `CONTRIBUTING.md`.
 - `SECURITY.md`.
@@ -21,6 +22,17 @@ Developer-facing:
 Screenshots:
 - `docs/screenshots/cx-main.png`.
 - `docs/screenshots/settings-privacy.png`.
+
+## Najdi UI Refinement
+Verified on `task/najdi-ui-20261004`:
+- shared native palette in `src/ui/najdi_theme.{h,cpp}`
+- warm-charcoal main/settings surfaces with sand active/focus accents
+- compact owner-drawn browser/settings push buttons and custom tab painting
+- dark native title bars where supported by Windows DWM
+- Unicode Segoe UI font application; full Arabic RTL localization is not claimed
+- no new telemetry, sync, updater, cloud, or third-party UI asset dependency
+- visual inspection completed from the locally built `cx.exe` for the main window and Settings & Privacy window
+- repository search result for `allam`: no match; offline/local ALLaM retrieval remains a product direction, not a shipped repository capability in this revision
 
 ## Final Test Suite
 The GoogleTest executable now contains unit, integration, Win32 UI smoke,
@@ -52,18 +64,20 @@ Measured scope:
 - `src/`
 - excluding only `src/main.cpp` and `src/app_window.cpp`, the executable entrypoint and WebView2 host shell.
 
-Final successful local gate:
-- PASS: 81.26% line coverage.
-- covered: 2359.
-- valid: 2903.
+Latest successful local gate on `task/najdi-ui-20261004`:
+- PASS: 80.81% line coverage.
+- covered: 2476.
+- valid: 3064.
 - threshold: 80%.
+
+P10 baseline before the UI refinement was 81.26% (2359/2903).
 
 The coverage script performs a clean Debug rebuild of `storage_tests` before measurement and rejects empty/invalid 0/0 reports.
 
 ## Performance
-Final successful coverage-gate run:
-- New-tab P95: 2.7493 ms, threshold <100 ms.
-- 100 config save/load round trips: 199.718 ms, threshold <1000 ms.
+Latest successful coverage-gate run on the UI branch:
+- New-tab P95: 2.9734 ms, threshold <100 ms.
+- 100 config save/load round trips: 210.923 ms, threshold <1000 ms.
 
 Release regression run also passed both performance tests.
 
@@ -100,7 +114,7 @@ CI status: PASS on GitHub Actions run `37186418199` for commit `13d6c1f23ff4c692
 
 ## Acceptance Criteria
 - [x] All requested documentation exists and is updated.
-- [x] Measured line coverage >80%: 81.26%.
+- [x] Measured line coverage >80% on the current UI branch: 80.81%.
 - [x] GitHub Actions pipeline green: run `37186418199` passed all three jobs.
 - [x] No critical first-party issue is known from the completed automated/static P10 checks; this is not a penetration-test claim.
 - [x] Release candidate ready: local RC verification passed and GitHub CI run `37186418199` passed.
@@ -109,6 +123,7 @@ CI status: PASS on GitHub Actions run `37186418199` for commit `13d6c1f23ff4c692
 - WebView2 whole-process-tree zero-network is not claimed.
 - Physical USB execution remains unverified from P09.
 - Code signing remains unavailable without a certificate.
+- Offline/local ALLaM retrieval is not implemented in this repository revision.
 - Local Visual Studio emits MSB8029; it has not failed build/tests.
 
 ## Receipt

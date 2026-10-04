@@ -39,9 +39,11 @@ MCP:
 
 UI:
 - SettingsWindow provides Privacy & Security, Agent Permissions, MCP Allowlist, and Data & Storage pages.
+- `ui/najdi_theme` owns the CX-native warm-charcoal/sand visual tokens, Unicode font application, compact owner-drawn controls, and themed tab painting.
 - PrivacyDashboard reports current local state.
 - AllowlistDialog manages MCP entries.
 - History and bookmark dialogs remain local.
+- The design language is documented in `docs/UI_DESIGN.md`; Arabic rendering is supported by Unicode controls, while full RTL localization is not yet claimed.
 
 Packaging:
 - Inno Setup produces a per-user installer.

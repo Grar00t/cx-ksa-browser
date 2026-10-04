@@ -50,6 +50,7 @@ Detailed instructions are in docs/BUILD.md and docs/INSTALL.md.
 - Installation and portable mode: docs/INSTALL.md
 - Privacy policy: docs/PRIVACY_POLICY.md
 - Architecture: docs/ARCHITECTURE.md
+- UI design language: docs/UI_DESIGN.md
 - Build and testing: docs/BUILD.md
 - Security policy: SECURITY.md
 - Contribution rules: CONTRIBUTING.md
@@ -58,5 +59,9 @@ Detailed instructions are in docs/BUILD.md and docs/INSTALL.md.
 ## Project principles
 
 CX is local-first, permission-gated, explicit about trust boundaries, and evidence-driven. A documented test, hash, receipt, or reproducible command is preferred over a product claim that cannot be verified.
+
+The native interface direction is Najdi utility minimalism: warm charcoal surfaces, sand/olive accents, compact density, high contrast, no gradients, no glassmorphism, and no copied browser assets. See `docs/UI_DESIGN.md`.
+
+Offline/local ALLaM retrieval is a product direction, not a shipped repository capability at this revision.
 
 Made with love in KSA.

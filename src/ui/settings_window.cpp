@@ -7,6 +7,7 @@
 #include "mcp/allowlist_manager.h"
 #include "mcp/mcp_client.h"
 #include "storage/database.h"
+#include "ui/najdi_theme.h"
 
 #include <commctrl.h>
 #include <shellapi.h>
@@ -59,9 +60,14 @@ HWND AddButton(
     int width,
     int height,
     DWORD style = BS_PUSHBUTTON) {
+  const DWORD type = style & BS_TYPEMASK;
+  const DWORD visual_style =
+      type == BS_PUSHBUTTON
+          ? style | BS_OWNERDRAW
+          : style;
   return CreateWindowExW(
       0, L"BUTTON", text,
-      WS_CHILD | WS_VISIBLE | WS_TABSTOP | style,
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP | visual_style,
       x, y, width, height,
       parent,
       reinterpret_cast<HMENU>(
@@ -133,7 +139,7 @@ void SettingsWindow::Show(HWND owner) {
   window_class.lpszClassName = kWindowClass;
   window_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
   window_class.hbrBackground =
-      reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+      theme::BackgroundBrush();
   RegisterClassExW(&window_class);
 
   hwnd_ = CreateWindowExW(
@@ -148,7 +154,9 @@ void SettingsWindow::Show(HWND owner) {
     return;
   }
 
+  theme::ApplyWindowChrome(hwnd_);
   CreateControls();
+  theme::ApplyFontToChildren(hwnd_);
   Layout();
   Refresh();
   ShowPage(0);
@@ -179,10 +187,12 @@ void SettingsWindow::CreateControls() {
   tabs_ = CreateWindowExW(
       0, WC_TABCONTROLW, L"",
       WS_CHILD | WS_VISIBLE |
-          WS_CLIPSIBLINGS | WS_TABSTOP,
+          WS_CLIPSIBLINGS | WS_TABSTOP |
+          TCS_OWNERDRAWFIXED,
       16, 120, 840, 500,
       hwnd_, nullptr,
       GetModuleHandleW(nullptr), nullptr);
+  theme::StyleTabControl(tabs_);
 
   const wchar_t* names[] = {
       L"Privacy & Security",
@@ -469,6 +479,7 @@ void SettingsWindow::HandleNotify(
   if (header->code == TCN_SELCHANGE) {
     const int index = TabCtrl_GetCurSel(tabs_);
     ShowPage(index < 0 ? 0 : index);
+    InvalidateRect(tabs_, nullptr, TRUE);
   }
 }
 
@@ -693,6 +704,22 @@ LRESULT CALLBACK SettingsWindow::WndProc(
       self->RefreshDashboard();
     }
     return 0;
+  }
+
+  if (self &&
+      (message == WM_CTLCOLORSTATIC ||
+       message == WM_CTLCOLOREDIT ||
+       message == WM_CTLCOLORBTN ||
+       message == WM_CTLCOLORLISTBOX)) {
+    return theme::HandleControlColor(
+        message, wparam, lparam);
+  }
+
+  if (self && message == WM_DRAWITEM) {
+    if (theme::DrawOwnerItem(
+            reinterpret_cast<const DRAWITEMSTRUCT*>(lparam))) {
+      return TRUE;
+    }
   }
 
   if (self && message == WM_SIZE) {

@@ -4,6 +4,7 @@
 #include "agent/permissions.h"
 #include "ui/permission_dialog.h"
 #include "ui/settings_window.h"
+#include "ui/najdi_theme.h"
 #include "browser/bookmark_service.h"
 #include "browser/history_service.h"
 #include "browser/tab_manager.h"
@@ -135,7 +136,7 @@ bool AppWindow::Create(HINSTANCE instance, int) {
   window_class.lpszClassName = kWindowClass;
   window_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
   window_class.hbrBackground =
-      reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+      cx::ui::theme::BackgroundBrush();
 
   if (!RegisterClassExW(&window_class) &&
       GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
@@ -148,6 +149,7 @@ bool AppWindow::Create(HINSTANCE instance, int) {
       nullptr, nullptr, instance, this);
   if (!hwnd_) return false;
 
+  cx::ui::theme::ApplyWindowChrome(hwnd_);
   CreateMenus();
   CreateBrowserControls();
   RefreshBrowserChrome();
@@ -211,51 +213,58 @@ void AppWindow::CreateBrowserControls() {
   tab_strip_ = CreateWindowExW(
       0, WC_TABCONTROLW, L"",
       WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS |
-          TCS_TABS | TCS_SINGLELINE,
+          TCS_TABS | TCS_SINGLELINE | TCS_OWNERDRAWFIXED,
       0, 0, 100, 32,
       hwnd_, nullptr, nullptr, nullptr);
+  cx::ui::theme::StyleTabControl(tab_strip_);
 
   back_button_ = CreateWindowExW(
       0, L"BUTTON", L"<",
-      WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
       0, 0, 36, 30,
       hwnd_, reinterpret_cast<HMENU>(kBack), nullptr, nullptr);
   forward_button_ = CreateWindowExW(
       0, L"BUTTON", L">",
-      WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
       0, 0, 36, 30,
       hwnd_, reinterpret_cast<HMENU>(kForward), nullptr, nullptr);
   reload_button_ = CreateWindowExW(
       0, L"BUTTON", L"Reload",
-      WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
       0, 0, 60, 30,
       hwnd_, reinterpret_cast<HMENU>(kReload), nullptr, nullptr);
   address_bar_ = CreateWindowExW(
-      WS_EX_CLIENTEDGE, L"EDIT", L"",
+      0, L"EDIT", L"",
       WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
       0, 0, 100, 30,
       hwnd_, nullptr, nullptr, nullptr);
   go_button_ = CreateWindowExW(
       0, L"BUTTON", L"Go",
-      WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
       0, 0, 44, 30,
       hwnd_, reinterpret_cast<HMENU>(kGo), nullptr, nullptr);
   bookmark_button_ = CreateWindowExW(
       0, L"BUTTON", L"Bookmark",
-      WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
       0, 0, 78, 30,
       hwnd_, reinterpret_cast<HMENU>(kBookmark), nullptr, nullptr);
   new_tab_button_ = CreateWindowExW(
       0, L"BUTTON", L"+",
-      WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
       0, 0, 34, 30,
       hwnd_, reinterpret_cast<HMENU>(kNewTab), nullptr, nullptr);
   close_tab_button_ = CreateWindowExW(
       0, L"BUTTON", L"x",
-      WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
       0, 0, 34, 30,
       hwnd_, reinterpret_cast<HMENU>(kCloseTab), nullptr, nullptr);
 
+  SendMessageW(
+      address_bar_,
+      EM_SETMARGINS,
+      EC_LEFTMARGIN | EC_RIGHTMARGIN,
+      MAKELPARAM(10, 10));
+  cx::ui::theme::ApplyFontToChildren(hwnd_);
   LayoutControls();
 }
 
@@ -354,6 +363,7 @@ void AppWindow::HandleNotify(const NMHDR* header) {
   if (header->hwndFrom == tab_strip_ &&
       header->code == TCN_SELCHANGE) {
     ActivateSelectedTab();
+    InvalidateRect(tab_strip_, nullptr, TRUE);
   }
 }
 
@@ -751,6 +761,22 @@ LRESULT CALLBACK AppWindow::WndProc(
       SetWindowLongPtrW(
           hwnd, GWLP_USERDATA,
           reinterpret_cast<LONG_PTR>(self));
+    }
+  }
+
+  if (self &&
+      (message == WM_CTLCOLORSTATIC ||
+       message == WM_CTLCOLOREDIT ||
+       message == WM_CTLCOLORBTN ||
+       message == WM_CTLCOLORLISTBOX)) {
+    return cx::ui::theme::HandleControlColor(
+        message, wparam, lparam);
+  }
+
+  if (self && message == WM_DRAWITEM) {
+    if (cx::ui::theme::DrawOwnerItem(
+            reinterpret_cast<const DRAWITEMSTRUCT*>(lparam))) {
+      return TRUE;
     }
   }
 

@@ -123,6 +123,8 @@ if(MSVC)
 endif()
 
 add_library(cx_ui STATIC
+  src/ui/najdi_theme.cpp
+  src/ui/najdi_theme.h
   src/ui/settings_window.cpp
   src/ui/settings_window.h
   src/ui/privacy_dashboard.cpp
