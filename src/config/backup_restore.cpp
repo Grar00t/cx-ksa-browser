@@ -2,10 +2,12 @@
 
 #include "config/config_manager.h"
 #include "storage/database.h"
+#include "storage/migrations.h"
 
 #include <sqlite3.h>
 #include <windows.h>
 
+#include <array>
 #include <chrono>
 #include <filesystem>
 #include <string>
@@ -45,6 +47,17 @@ void Close(sqlite3** db) {
     sqlite3_close_v2(*db);
     *db = nullptr;
   }
+}
+
+bool CanPrepare(sqlite3* db, const char* sql) {
+  sqlite3_stmt* statement = nullptr;
+  const bool ok =
+      sqlite3_prepare_v2(
+          db, sql, -1, &statement, nullptr) == SQLITE_OK;
+  if (statement) {
+    sqlite3_finalize(statement);
+  }
+  return ok;
 }
 
 }  // namespace
@@ -257,12 +270,33 @@ bool BackupRestore::VerifyDatabase(
         &statement,
         nullptr) == SQLITE_OK &&
         sqlite3_step(statement) == SQLITE_ROW &&
-        sqlite3_column_int(statement, 0) >= 3;
+        sqlite3_column_int(statement, 0) ==
+            storage::kMigrations.back().version;
   }
 
   if (statement) {
     sqlite3_finalize(statement);
+    statement = nullptr;
   }
+
+  if (ok) {
+    constexpr std::array<const char*, 6> schema_probes{{
+        "SELECT key, value, updated_at FROM settings LIMIT 0;",
+        "SELECT id, position, url, title, pinned, created_at, updated_at "
+        "FROM tabs LIMIT 0;",
+        "SELECT id, url, title, visited_at FROM history LIMIT 0;",
+        "SELECT capability, granted, updated_at FROM permissions LIMIT 0;",
+        "SELECT id, url, title, created_at FROM bookmarks LIMIT 0;",
+        "SELECT version, applied_at FROM schema_migrations LIMIT 0;",
+    }};
+    for (const char* probe : schema_probes) {
+      if (!CanPrepare(db, probe)) {
+        ok = false;
+        break;
+      }
+    }
+  }
+
   Close(&db);
   return ok;
 }
