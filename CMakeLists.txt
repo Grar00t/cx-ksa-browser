@@ -11,6 +11,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+if(MSVC)
+  add_compile_options(/utf-8)
+endif()
+
 set(WEBVIEW2_VERSION "1.0.4258.31" CACHE STRING "Pinned Microsoft.Web.WebView2 NuGet version")
 set(WEBVIEW2_ROOT "${CMAKE_BINARY_DIR}/packages/Microsoft.Web.WebView2.${WEBVIEW2_VERSION}")
 set(WEBVIEW2_HEADER "${WEBVIEW2_ROOT}/build/native/include/WebView2.h")
