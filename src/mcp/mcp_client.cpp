@@ -5,8 +5,10 @@
 #include "mcp/rate_limiter.h"
 
 #include <array>
+#include <atomic>
 #include <filesystem>
 #include <sstream>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -378,52 +380,102 @@ bool McpClient::SendRequest(
     return false;
   }
 
+  if (timeout <= std::chrono::milliseconds::zero()) {
+    logger_.Log(
+        "mcp_request_rejected_invalid_timeout",
+        SafeLogToken(server_id));
+    return false;
+  }
+
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
   std::string frame(json_line);
   frame.push_back('\n');
-  if (!WriteAll(frame)) {
+  if (!WriteAll(frame, timeout)) {
     logger_.Log(
         "mcp_request_write_failed",
         SafeLogToken(server_id));
+    Stop();
     return false;
   }
 
   logger_.Log("mcp_request_sent", SafeLogToken(server_id));
 
-  if (!response) {
-    return true;
-  }
-
-  response->clear();
-  if (!ReadLine(response, timeout)) {
+  const auto now = std::chrono::steady_clock::now();
+  if (now >= deadline) {
     logger_.Log(
         "mcp_response_read_failed",
         SafeLogToken(server_id));
+    Stop();
+    return false;
+  }
+
+  const auto remaining =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          deadline - now);
+  std::string discarded;
+  std::string* target = response ? response : &discarded;
+  target->clear();
+  if (!ReadLine(target, remaining)) {
+    logger_.Log(
+        "mcp_response_read_failed",
+        SafeLogToken(server_id));
+    Stop();
     return false;
   }
 
   logger_.Log(
       "mcp_response_received",
-      RequestDetail(server_id, response->size()));
+      RequestDetail(server_id, target->size()));
   return true;
 }
 
-bool McpClient::WriteAll(std::string_view bytes) {
-  std::size_t offset = 0;
-  while (offset < bytes.size()) {
-    const DWORD remaining = static_cast<DWORD>(
-        std::min<std::size_t>(
-            bytes.size() - offset, MAXDWORD));
-    DWORD written = 0;
-    if (!WriteFile(
-            stdin_write_, bytes.data() + offset,
-            remaining, &written, nullptr) ||
-        written == 0) {
-      return false;
-    }
-
-    offset += written;
+bool McpClient::WriteAll(
+    std::string_view bytes,
+    std::chrono::milliseconds timeout) {
+  if (!stdin_write_ ||
+      timeout <= std::chrono::milliseconds::zero()) {
+    return false;
   }
-  return true;
+
+  std::atomic<bool> success{false};
+  const std::string owned(bytes);
+  std::thread writer([this, owned, &success]() {
+    std::size_t offset = 0;
+    while (offset < owned.size()) {
+      const DWORD remaining = static_cast<DWORD>(
+          std::min<std::size_t>(
+              owned.size() - offset, MAXDWORD));
+      DWORD written = 0;
+      if (!WriteFile(
+              stdin_write_, owned.data() + offset,
+              remaining, &written, nullptr) ||
+          written == 0) {
+        return;
+      }
+      offset += written;
+    }
+    success.store(true, std::memory_order_release);
+  });
+
+  const auto bounded = std::clamp<long long>(
+      timeout.count(), 1, static_cast<long long>(MAXDWORD - 1));
+  const DWORD wait = WaitForSingleObject(
+      writer.native_handle(), static_cast<DWORD>(bounded));
+
+  if (wait != WAIT_OBJECT_0) {
+    // Break a blocked anonymous-pipe write by terminating the child, which
+    // closes its inherited read handle, and cancel synchronous I/O as a
+    // secondary unblock path before joining the writer thread.
+    if (process_) {
+      TerminateProcess(process_, 1);
+      WaitForSingleObject(process_, 1000);
+    }
+    CancelSynchronousIo(writer.native_handle());
+  }
+
+  writer.join();
+  return wait == WAIT_OBJECT_0 &&
+      success.load(std::memory_order_acquire);
 }
 
 bool McpClient::ReadLine(
