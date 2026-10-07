@@ -10,6 +10,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <iostream>
 #include <memory>
@@ -312,27 +313,37 @@ TEST_F(BrowserTest, NavigationMaintainsPerTabBackForwardState) {
   FakeSurface surface;
   navigation.AttachSurface(&surface);
 
+  std::uint64_t next_navigation_id = 1;
+  const auto finish_navigation =
+      [&](std::string_view url,
+          std::string_view title,
+          bool success = true) {
+        const std::uint64_t navigation_id =
+            next_navigation_id++;
+        navigation.OnNavigationStarted(
+            navigation_id, url);
+        navigation.OnNavigationCompleted(
+            navigation_id, success, url, title);
+      };
+
   ASSERT_TRUE(navigation.ActivateTab(
       tabs.active_tab_id()));
   ASSERT_FALSE(surface.navigations.empty());
   EXPECT_EQ(surface.navigations.back(), L"about:blank");
+  finish_navigation("about:blank", "New Tab");
 
   ASSERT_TRUE(
       navigation.NavigateAddress(L"example.test/one"));
   EXPECT_EQ(
       surface.navigations.back(),
       L"https://example.test/one");
-  navigation.OnNavigationCompleted(
-      true,
-      "https://example.test/one",
-      "One");
+  finish_navigation(
+      "https://example.test/one", "One");
 
   ASSERT_TRUE(navigation.NavigateUrl(
       "https://example.test/two"));
-  navigation.OnNavigationCompleted(
-      true,
-      "https://example.test/two",
-      "Two");
+  finish_navigation(
+      "https://example.test/two", "Two");
 
   EXPECT_TRUE(navigation.CanGoBack());
   ASSERT_TRUE(navigation.Back());
@@ -340,30 +351,79 @@ TEST_F(BrowserTest, NavigationMaintainsPerTabBackForwardState) {
   EXPECT_EQ(
       surface.navigations.back(),
       L"https://example.test/one");
-  navigation.OnNavigationCompleted(
-      true,
-      "https://example.test/one",
-      "One");
+  finish_navigation(
+      "https://example.test/one", "One");
   EXPECT_TRUE(navigation.CanGoForward());
 
   ASSERT_TRUE(navigation.Forward());
   EXPECT_EQ(
       surface.navigations.back(),
       L"https://example.test/two");
-  navigation.OnNavigationCompleted(
-      true,
-      "https://example.test/two",
-      "Two");
+  finish_navigation(
+      "https://example.test/two", "Two");
 
   ASSERT_TRUE(navigation.Reload());
   EXPECT_EQ(surface.reloads, 1);
-  navigation.OnNavigationCompleted(
-      true,
-      "https://example.test/two",
-      "Two");
+  finish_navigation(
+      "https://example.test/two", "Two");
 
   const auto visits = history.Search("example.test");
   EXPECT_GE(visits.size(), 4u);
+}
+
+TEST_F(BrowserTest, NavigationCompletionUpdatesOriginatingTabById) {
+  ASSERT_TRUE(database_->SetSetting(
+      "privacy.save_history", "1"));
+  cx::browser::TabManager tabs(*database_);
+  ASSERT_TRUE(tabs.Restore());
+  cx::browser::HistoryService history(*database_);
+
+  cx::browser::NavigationController navigation(
+      tabs, history);
+  FakeSurface surface;
+  navigation.AttachSurface(&surface);
+
+  const auto first_id = tabs.active_tab_id();
+  ASSERT_TRUE(navigation.NavigateUrl(
+      "https://first.test/start"));
+  navigation.OnNavigationStarted(
+      101, "https://first.test/start");
+
+  const auto second_id = tabs.CreateTab(
+      "about:blank", "Second", false);
+  ASSERT_TRUE(second_id.has_value());
+  ASSERT_TRUE(navigation.ActivateTab(*second_id));
+  navigation.OnNavigationStarted(
+      202, "about:blank");
+  navigation.OnNavigationCompleted(
+      202, true, "about:blank", "Second");
+
+  navigation.OnNavigationCompleted(
+      101, true,
+      "https://first.test/final",
+      "First Final");
+
+  const auto first = std::find_if(
+      tabs.tabs().begin(),
+      tabs.tabs().end(),
+      [first_id](const auto& tab) {
+        return tab.id == first_id;
+      });
+  const auto second = std::find_if(
+      tabs.tabs().begin(),
+      tabs.tabs().end(),
+      [second_id](const auto& tab) {
+        return tab.id == *second_id;
+      });
+
+  ASSERT_NE(first, tabs.tabs().end());
+  ASSERT_NE(second, tabs.tabs().end());
+  EXPECT_EQ(
+      first->url,
+      "https://first.test/final");
+  EXPECT_EQ(first->title, "First Final");
+  EXPECT_EQ(second->url, "about:blank");
+  EXPECT_EQ(second->title, "Second");
 }
 
 TEST(NavigationAddressTest, NormalizesHostsAndRejectsUnsafeSchemes) {
@@ -474,7 +534,7 @@ TEST_F(BrowserTest, NavigationFailClosedPathsDoNotMutateState) {
 
   navigation.ForgetTab(tabs.active_tab_id());
   navigation.OnNavigationCompleted(
-      false,
+      999, false,
       "https://failed.test",
       "Failed");
   EXPECT_TRUE(history.Recent().empty());
