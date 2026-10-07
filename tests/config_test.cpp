@@ -269,6 +269,32 @@ TEST_F(ConfigTest, CorruptBackupIsRejectedWithoutDataLoss) {
       "keep-me");
 }
 
+TEST_F(ConfigTest, CxNamedTablesWithBrokenSchemaAreRejected) {
+  const auto malformed = root_ / "malformed-cx.db";
+  sqlite3* raw = nullptr;
+  ASSERT_EQ(
+      sqlite3_open(malformed.string().c_str(), &raw),
+      SQLITE_OK);
+  ASSERT_NE(raw, nullptr);
+
+  const char* sql =
+      "CREATE TABLE settings(key TEXT PRIMARY KEY);"
+      "CREATE TABLE tabs(id INTEGER PRIMARY KEY);"
+      "CREATE TABLE history(id INTEGER PRIMARY KEY);"
+      "CREATE TABLE permissions(capability TEXT PRIMARY KEY);"
+      "CREATE TABLE bookmarks(id INTEGER PRIMARY KEY);"
+      "CREATE TABLE schema_migrations(version INTEGER NOT NULL);"
+      "INSERT INTO schema_migrations(version) VALUES(3);";
+  ASSERT_EQ(
+      sqlite3_exec(raw, sql, nullptr, nullptr, nullptr),
+      SQLITE_OK);
+  ASSERT_EQ(sqlite3_close(raw), SQLITE_OK);
+
+  EXPECT_FALSE(
+      cx::config::BackupRestore::VerifyDatabase(
+          malformed));
+}
+
 TEST_F(ConfigTest, ValidNonCxSqliteIsRejectedWithoutDataLoss) {
   cx::storage::Database database(root_ / "data.db");
   ASSERT_TRUE(database.Open());
