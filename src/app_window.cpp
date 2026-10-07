@@ -169,6 +169,12 @@ int AppWindow::Run(HINSTANCE instance, int show_command) {
 
   MSG message{};
   while (GetMessageW(&message, nullptr, 0, 0) > 0) {
+    const HWND root = message.hwnd
+        ? GetAncestor(message.hwnd, GA_ROOT)
+        : nullptr;
+    if (root && IsDialogMessageW(root, &message)) {
+      continue;
+    }
     TranslateMessage(&message);
     DispatchMessageW(&message);
   }
@@ -1059,7 +1065,6 @@ void AppWindow::HandleNewWindow(
   }
 
   RefreshBrowserChrome();
-  navigation_.ActivateTab(*id);
   navigation_.NavigateAddress(target);
   RefreshBrowserChrome();
 }
