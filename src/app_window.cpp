@@ -901,20 +901,7 @@ void AppWindow::InitializeWebView() {
                                   [this](ICoreWebView2*,
                                      ICoreWebView2NavigationStartingEventArgs* args)
                                       -> HRESULT {
-                                    LPWSTR uri = nullptr;
-                                    if (SUCCEEDED(args->get_Uri(&uri)) && uri) {
-                                      const bool allowed =
-                                          cx::browser::NavigationController::
-                                              IsAllowedUrl(uri);
-                                      CoTaskMemFree(uri);
-                                      if (!allowed) {
-                                        args->put_Cancel(TRUE);
-                                        SetBrowserStatus(
-                                            L"Blocked unsafe navigation");
-                                      } else {
-                                        SetBrowserStatus(L"Loading...");
-                                      }
-                                    }
+                                    HandleNavigationStarting(args);
                                     return S_OK;
                                   }).Get(),
                               &starting_token);
@@ -987,9 +974,47 @@ bool AppWindow::ReloadPage() {
   return webview_ && SUCCEEDED(webview_->Reload());
 }
 
+void AppWindow::HandleNavigationStarting(
+    ICoreWebView2NavigationStartingEventArgs* args) {
+  if (!args) return;
+
+  UINT64 navigation_id = 0;
+  if (FAILED(args->get_NavigationId(&navigation_id)) ||
+      navigation_id == 0) {
+    SetBrowserStatus(L"Navigation tracking unavailable");
+    return;
+  }
+
+  LPWSTR uri = nullptr;
+  std::string target_utf8;
+  if (SUCCEEDED(args->get_Uri(&uri)) && uri) {
+    const std::wstring target(uri);
+    const bool allowed =
+        cx::browser::NavigationController::IsAllowedUrl(target);
+    target_utf8 = WideToUtf8(target);
+    CoTaskMemFree(uri);
+
+    if (!allowed) {
+      args->put_Cancel(TRUE);
+      SetBrowserStatus(L"Blocked unsafe navigation");
+      return;
+    }
+  }
+
+  navigation_.OnNavigationStarted(
+      static_cast<std::uint64_t>(navigation_id),
+      target_utf8);
+  SetBrowserStatus(L"Loading...");
+}
+
 void AppWindow::HandleNavigationCompleted(
     ICoreWebView2NavigationCompletedEventArgs* args) {
   if (!args || !webview_) return;
+
+  UINT64 navigation_id = 0;
+  if (FAILED(args->get_NavigationId(&navigation_id))) {
+    navigation_id = 0;
+  }
 
   BOOL success = FALSE;
   if (FAILED(args->get_IsSuccess(&success))) {
@@ -1011,7 +1036,10 @@ void AppWindow::HandleNavigationCompleted(
   }
 
   navigation_.OnNavigationCompleted(
-      success != FALSE, source_utf8, title_utf8);
+      static_cast<std::uint64_t>(navigation_id),
+      success != FALSE,
+      source_utf8,
+      title_utf8);
 
   if (success != FALSE && source_utf8 == "about:blank") {
     const COLORREF background = design::Color::Background;
