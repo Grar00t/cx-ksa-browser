@@ -301,6 +301,64 @@ TEST_F(ConfigTest, ValidNonCxSqliteIsRejectedWithoutDataLoss) {
       "preserve");
 }
 
+TEST_F(ConfigTest, DeceptiveCxLikeDatabaseWithWrongColumnsIsRejected) {
+  cx::storage::Database database(root_ / "data.db");
+  ASSERT_TRUE(database.Open());
+  ASSERT_TRUE(database.SetSetting("sentinel", "preserve"));
+
+  const auto deceptive = root_ / "deceptive.db";
+  sqlite3* raw = nullptr;
+  ASSERT_EQ(sqlite3_open(deceptive.string().c_str(), &raw), SQLITE_OK);
+  ASSERT_NE(raw, nullptr);
+  const char* sql =
+      "CREATE TABLE settings(wrong TEXT);"
+      "CREATE TABLE tabs(id INTEGER);"
+      "CREATE TABLE history(id INTEGER);"
+      "CREATE TABLE permissions(capability TEXT);"
+      "CREATE TABLE bookmarks(id INTEGER);"
+      "CREATE TABLE schema_migrations("
+      "version INTEGER PRIMARY KEY, applied_at INTEGER);"
+      "INSERT INTO schema_migrations(version, applied_at) VALUES(3, 0);";
+  ASSERT_EQ(
+      sqlite3_exec(raw, sql, nullptr, nullptr, nullptr),
+      SQLITE_OK);
+  ASSERT_EQ(sqlite3_close(raw), SQLITE_OK);
+
+  EXPECT_FALSE(
+      cx::config::BackupRestore::VerifyDatabase(deceptive));
+  EXPECT_FALSE(
+      cx::config::BackupRestore::RestoreDatabase(
+          database, deceptive));
+  EXPECT_TRUE(database.IsOpen());
+  EXPECT_EQ(
+      database.GetSetting("sentinel").value_or(""),
+      "preserve");
+}
+
+TEST_F(ConfigTest, FutureSchemaVersionIsRejected) {
+  cx::storage::Database source(root_ / "source.db");
+  ASSERT_TRUE(source.Open());
+
+  const auto backup = root_ / "future.db";
+  ASSERT_TRUE(
+      cx::config::BackupRestore::BackupDatabase(source, backup));
+  source.Close();
+
+  sqlite3* raw = nullptr;
+  ASSERT_EQ(sqlite3_open(backup.string().c_str(), &raw), SQLITE_OK);
+  ASSERT_NE(raw, nullptr);
+  ASSERT_EQ(
+      sqlite3_exec(
+          raw,
+          "INSERT INTO schema_migrations(version) VALUES(4);",
+          nullptr, nullptr, nullptr),
+      SQLITE_OK);
+  ASSERT_EQ(sqlite3_close(raw), SQLITE_OK);
+
+  EXPECT_FALSE(
+      cx::config::BackupRestore::VerifyDatabase(backup));
+}
+
 TEST_F(ConfigTest, RemoteBackupPathsAreRejectedByDesign) {
   cx::storage::Database database(root_ / "data.db");
   ASSERT_TRUE(database.Open());
