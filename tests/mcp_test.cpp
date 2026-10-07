@@ -277,6 +277,85 @@ TEST_F(McpTest, StdioRoundTripWorksAndRequestIsLoggedLocally) {
   EXPECT_EQ(log.find(request), std::string::npos);
 }
 
+TEST_F(McpTest, DiscardedResponseIsDrainedBeforeNextRequest) {
+  ASSERT_TRUE(allowlist_->AddOrUpdate(EchoServer()));
+
+  McpFakePrompt prompt({true, true});
+  cx::agent::PermissionManager permissions(*database_, prompt);
+  cx::agent::AgentCore agent(permissions, *logger_);
+  ASSERT_TRUE(agent.Start(nullptr));
+
+  cx::mcp::RateLimiter limiter(10);
+  cx::mcp::McpClient client(
+      agent, *allowlist_, limiter, *logger_);
+  ASSERT_TRUE(client.Start(nullptr, "echo"));
+
+  const std::string first =
+      R"({"jsonrpc":"2.0","id":1,"method":"ping"})";
+  const std::string second =
+      R"({"jsonrpc":"2.0","id":2,"method":"ping"})";
+  ASSERT_TRUE(client.SendRequest(
+      "echo", first, nullptr, std::chrono::seconds(2)));
+
+  std::string response;
+  ASSERT_TRUE(client.SendRequest(
+      "echo", second, &response, std::chrono::seconds(2)));
+  EXPECT_EQ(response, second);
+}
+
+TEST_F(McpTest, ResponseTimeoutInvalidatesTransport) {
+  auto server = EchoServer();
+  server.args = {"--response-delay-ms", "250"};
+  ASSERT_TRUE(allowlist_->AddOrUpdate(server));
+
+  McpFakePrompt prompt({true, true});
+  cx::agent::PermissionManager permissions(*database_, prompt);
+  cx::agent::AgentCore agent(permissions, *logger_);
+  ASSERT_TRUE(agent.Start(nullptr));
+
+  cx::mcp::RateLimiter limiter(10);
+  cx::mcp::McpClient client(
+      agent, *allowlist_, limiter, *logger_);
+  ASSERT_TRUE(client.Start(nullptr, "echo"));
+
+  std::string response;
+  EXPECT_FALSE(client.SendRequest(
+      "echo",
+      R"({"jsonrpc":"2.0","id":1,"method":"slow"})",
+      &response, std::chrono::milliseconds(25)));
+  EXPECT_FALSE(client.IsRunning());
+}
+
+TEST_F(McpTest, WriteTimeoutInvalidatesTransport) {
+  auto server = EchoServer();
+  server.args = {"--startup-delay-ms", "1000"};
+  ASSERT_TRUE(allowlist_->AddOrUpdate(server));
+
+  McpFakePrompt prompt({true, true});
+  cx::agent::PermissionManager permissions(*database_, prompt);
+  cx::agent::AgentCore agent(permissions, *logger_);
+  ASSERT_TRUE(agent.Start(nullptr));
+
+  cx::mcp::RateLimiter limiter(10);
+  cx::mcp::McpClient client(
+      agent, *allowlist_, limiter, *logger_);
+  ASSERT_TRUE(client.Start(nullptr, "echo"));
+
+  const std::string payload(512 * 1024, 'x');
+  const std::string request =
+      "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"bulk\","
+      "\"payload\":\"" + payload + "\"}";
+
+  const auto started = std::chrono::steady_clock::now();
+  std::string response;
+  EXPECT_FALSE(client.SendRequest(
+      "echo", request, &response, std::chrono::milliseconds(50)));
+  const auto elapsed = std::chrono::steady_clock::now() - started;
+
+  EXPECT_LT(elapsed, std::chrono::milliseconds(750));
+  EXPECT_FALSE(client.IsRunning());
+}
+
 TEST_F(McpTest, ClientEnforcesTenRequestsPerSecond) {
   ASSERT_TRUE(allowlist_->AddOrUpdate(EchoServer()));
 
