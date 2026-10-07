@@ -591,6 +591,22 @@ bool AllowlistManager::ValidateServer(const ServerConfig& server) {
     return false;
   }
 
+  // MCP executables are local-only. Reject UNC/device namespaces and any
+  // drive Windows classifies as remote, removable, optical, unknown, or
+  // nonexistent. Only fixed disks and RAM disks are accepted.
+  const std::wstring native_command = command_path.native();
+  if (native_command.rfind(L"\\\\", 0) == 0) {
+    return false;
+  }
+  const std::wstring root = command_path.root_path().native();
+  if (root.empty()) {
+    return false;
+  }
+  const UINT drive_type = GetDriveTypeW(root.c_str());
+  if (drive_type != DRIVE_FIXED && drive_type != DRIVE_RAMDISK) {
+    return false;
+  }
+
   for (const auto& argument : server.args) {
     if (argument.size() > 8192 ||
         argument.find('\0') != std::string::npos) {
