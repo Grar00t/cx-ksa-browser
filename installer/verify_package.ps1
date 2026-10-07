@@ -149,6 +149,7 @@ try {
         "PRIVACY.md",
         "SECURITY.md",
         "docs\INSTALL.md",
+        "docs\PRIVACY_POLICY.md",
         "unins000.dat",
         "unins000.exe",
         "unins000.msg"
