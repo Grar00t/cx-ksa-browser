@@ -27,6 +27,39 @@ bool StartsWithInsensitive(
   return true;
 }
 
+bool EqualsInsensitive(
+    std::wstring_view value,
+    std::wstring_view expected) {
+  return value.size() == expected.size() &&
+      StartsWithInsensitive(value, expected);
+}
+
+bool IsLocalFileUrl(std::wstring_view url) {
+  constexpr std::wstring_view kFilePrefix = L"file://";
+  constexpr std::wstring_view kLocalhost = L"localhost";
+
+  if (!StartsWithInsensitive(url, kFilePrefix)) {
+    return false;
+  }
+
+  const auto target = url.substr(kFilePrefix.size());
+  if (target.empty()) {
+    return false;
+  }
+
+  if (target.front() == L'/') {
+    return true;
+  }
+
+  if (!StartsWithInsensitive(target, kLocalhost)) {
+    return false;
+  }
+
+  return target.size() == kLocalhost.size() ||
+      (target.size() > kLocalhost.size() &&
+       target[kLocalhost.size()] == L'/');
+}
+
 std::string WideToUtf8(std::wstring_view value) {
   if (value.empty()) {
     return {};
@@ -457,9 +490,8 @@ bool NavigationController::IsAllowedUrl(
              url, L"https://") ||
          StartsWithInsensitive(
              url, L"http://") ||
-         StartsWithInsensitive(
-             url, L"file://") ||
-         StartsWithInsensitive(
+         IsLocalFileUrl(url) ||
+         EqualsInsensitive(
              url, L"about:blank");
 }
 
