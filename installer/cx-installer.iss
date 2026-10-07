@@ -1,5 +1,5 @@
 #define MyAppName "CX Build"
-#define MyAppVersion "0.9.0"
+#define MyAppVersion "1.0.0"
 #define MyAppPublisher "CX Build"
 #define MyAppExeName "cx.exe"
 #ifndef BuildConfiguration
@@ -182,3 +182,4 @@ begin
   if CurUninstallStep = usUninstall then
     RemoveAppFromPath;
 end;
+

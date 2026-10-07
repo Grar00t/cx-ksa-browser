@@ -7,8 +7,8 @@ $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
 $exe = Join-Path $repo "build\$Configuration\cx.exe"
 $dist = Join-Path $repo "dist"
-$portableRoot = Join-Path $dist "CX-Build-Portable-0.9.0"
-$portableZip = Join-Path $dist "CX-Build-Portable-0.9.0.zip"
+$portableRoot = Join-Path $dist "CX-Build-Portable-1.0.0"
+$portableZip = Join-Path $dist "CX-Build-Portable-1.0.0.zip"
 $iss = Join-Path $PSScriptRoot "cx-installer.iss"
 
 if (-not (Test-Path $exe)) {
@@ -91,3 +91,4 @@ if ($signTool -and $cert) {
     PortableSHA256 = (Get-FileHash $portableZip -Algorithm SHA256).Hash
     Signing = $signing
 } | ConvertTo-Json -Depth 3
+
