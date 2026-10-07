@@ -13,7 +13,12 @@ if (-not $Installer) {
         Select-Object -First 1).FullName
 }
 if (-not $PortableSource) {
-    $PortableSource = Join-Path $dist "CX-Build-Portable-0.9.0"
+    $portableCandidate = Get-ChildItem $dist -Directory -Filter "CX-Build-Portable-*" -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+    if ($portableCandidate) {
+        $PortableSource = $portableCandidate.FullName
+    }
 }
 
 function Assert-True {
