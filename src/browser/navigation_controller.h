@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <deque>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -39,7 +40,11 @@ public:
   bool CanGoBack() const;
   bool CanGoForward() const;
 
+  void OnNavigationStarted(
+      std::uint64_t navigation_id,
+      std::string_view target_url);
   void OnNavigationCompleted(
+      std::uint64_t navigation_id,
       bool success,
       std::string_view final_url,
       std::string_view title);
@@ -53,8 +58,14 @@ public:
 private:
   struct Stack {
     std::vector<std::string> entries;
-
     std::size_t index = 0;
+  };
+
+  struct NavigationIntent {
+    std::int64_t tab_id = 0;
+    bool record_visit = false;
+    bool append_stack_entry = false;
+    std::string requested_url;
   };
 
   Stack& EnsureStack(std::int64_t tab_id);
@@ -73,9 +84,9 @@ private:
   HistoryService& history_;
   NavigationSurface* surface_ = nullptr;
   std::unordered_map<std::int64_t, Stack> stacks_;
-
-  std::int64_t pending_tab_id_ = 0;
-  bool pending_record_visit_ = false;
+  std::deque<NavigationIntent> pending_intents_;
+  std::unordered_map<std::uint64_t, NavigationIntent>
+      inflight_navigations_;
 };
 
 }  // namespace cx::browser
