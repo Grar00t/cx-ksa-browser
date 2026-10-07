@@ -4,10 +4,12 @@
 #include "mcp/allowlist_manager.h"
 #include "storage/database.h"
 
-#include <gtest/gtest.h>
-
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <iphlpapi.h>
 #include <windows.h>
+
+#include <gtest/gtest.h>
 
 #include <atomic>
 #include <filesystem>
