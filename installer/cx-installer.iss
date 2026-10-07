@@ -2,6 +2,9 @@
 #define MyAppVersion "0.9.0"
 #define MyAppPublisher "CX Build"
 #define MyAppExeName "cx.exe"
+#ifndef BuildConfiguration
+  #define BuildConfiguration "Release"
+#endif
 
 [Setup]
 AppId={{E6B3C15D-0E94-4E4E-9A54-16A2C82DF909}
@@ -28,12 +31,13 @@ ArchitecturesAllowed=x64compatible
 Name: "addtopath"; Description: "Add CX Build to the current user's PATH"; GroupDescription: "Optional integrations:"; Flags: unchecked
 
 [Files]
-Source: "..\build\Release\cx.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\build\{#BuildConfiguration}\cx.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\NOTICE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\PRIVACY.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\SECURITY.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\docs\INSTALL.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "..\docs\PRIVACY_POLICY.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\CX Build"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
