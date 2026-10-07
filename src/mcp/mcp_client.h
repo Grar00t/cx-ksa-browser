@@ -43,7 +43,9 @@ public:
 
 private:
   bool Launch(const ServerConfig& server);
-  bool WriteAll(std::string_view bytes);
+  bool WriteAll(
+      std::string_view bytes,
+      std::chrono::milliseconds timeout);
   bool ReadLine(
       std::string* line,
       std::chrono::milliseconds timeout);
