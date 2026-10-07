@@ -76,6 +76,8 @@ private:
   void ActivateSelectedTab();
   void BookmarkCurrent();
   void OpenLibraryUrl(std::string url);
+  void HandleNavigationStarting(
+      ICoreWebView2NavigationStartingEventArgs* args);
   void HandleNavigationCompleted(
       ICoreWebView2NavigationCompletedEventArgs* args);
   void HandleNewWindow(
