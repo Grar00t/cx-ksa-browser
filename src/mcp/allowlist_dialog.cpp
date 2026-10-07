@@ -139,9 +139,18 @@ void AllowlistDialog::Show(HWND owner) {
   UpdateWindow(hwnd_);
 
   MSG message{};
-  while (hwnd_ && GetMessageW(&message, nullptr, 0, 0) > 0) {
+  BOOL get_message_result = TRUE;
+  while (hwnd_ &&
+         (get_message_result = GetMessageW(&message, nullptr, 0, 0)) > 0) {
+    if (IsDialogMessageW(hwnd_, &message)) {
+      continue;
+    }
     TranslateMessage(&message);
     DispatchMessageW(&message);
+  }
+
+  if (get_message_result == 0) {
+    PostQuitMessage(static_cast<int>(message.wParam));
   }
 
   EnableWindow(owner_, TRUE);
