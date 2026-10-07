@@ -12,6 +12,7 @@
 #include <atomic>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -26,62 +27,112 @@ public:
   }
 };
 
-std::size_t CountOwnedEstablishedTcp(DWORD pid) {
+std::optional<std::size_t> CountOwnedEstablishedTcp(
+    DWORD pid, ULONG family) {
   ULONG bytes = 0;
   if (GetExtendedTcpTable(
-          nullptr, &bytes, FALSE, AF_INET,
+          nullptr, &bytes, FALSE, family,
           TCP_TABLE_OWNER_PID_ALL, 0) !=
       ERROR_INSUFFICIENT_BUFFER) {
-    return 0;
+    return std::nullopt;
   }
 
   std::vector<unsigned char> buffer(bytes);
-  auto* table =
-      reinterpret_cast<PMIB_TCPTABLE_OWNER_PID>(
-          buffer.data());
-  if (GetExtendedTcpTable(
-          table, &bytes, FALSE, AF_INET,
-          TCP_TABLE_OWNER_PID_ALL, 0) != NO_ERROR) {
-    return 0;
+  if (family == AF_INET) {
+    auto* table =
+        reinterpret_cast<PMIB_TCPTABLE_OWNER_PID>(
+            buffer.data());
+    if (GetExtendedTcpTable(
+            table, &bytes, FALSE, family,
+            TCP_TABLE_OWNER_PID_ALL, 0) != NO_ERROR) {
+      return std::nullopt;
+    }
+
+    std::size_t count = 0;
+    for (DWORD i = 0; i < table->dwNumEntries; ++i) {
+      const auto& row = table->table[i];
+      if (row.dwOwningPid == pid &&
+          row.dwState == MIB_TCP_STATE_ESTAB) {
+        ++count;
+      }
+    }
+    return count;
   }
 
-  std::size_t count = 0;
-  for (DWORD i = 0; i < table->dwNumEntries; ++i) {
-    const auto& row = table->table[i];
-    if (row.dwOwningPid == pid &&
-        row.dwState == MIB_TCP_STATE_ESTAB) {
-      ++count;
+  if (family == AF_INET6) {
+    auto* table =
+        reinterpret_cast<PMIB_TCP6TABLE_OWNER_PID>(
+            buffer.data());
+    if (GetExtendedTcpTable(
+            table, &bytes, FALSE, family,
+            TCP_TABLE_OWNER_PID_ALL, 0) != NO_ERROR) {
+      return std::nullopt;
     }
+
+    std::size_t count = 0;
+    for (DWORD i = 0; i < table->dwNumEntries; ++i) {
+      const auto& row = table->table[i];
+      if (row.dwOwningPid == pid &&
+          row.dwState == MIB_TCP_STATE_ESTAB) {
+        ++count;
+      }
+    }
+    return count;
   }
-  return count;
+
+  return std::nullopt;
 }
 
-std::size_t CountOwnedUdpEndpoints(DWORD pid) {
+std::optional<std::size_t> CountOwnedUdpEndpoints(
+    DWORD pid, ULONG family) {
   ULONG bytes = 0;
   if (GetExtendedUdpTable(
-          nullptr, &bytes, FALSE, AF_INET,
+          nullptr, &bytes, FALSE, family,
           UDP_TABLE_OWNER_PID, 0) !=
       ERROR_INSUFFICIENT_BUFFER) {
-    return 0;
+    return std::nullopt;
   }
 
   std::vector<unsigned char> buffer(bytes);
-  auto* table =
-      reinterpret_cast<PMIB_UDPTABLE_OWNER_PID>(
-          buffer.data());
-  if (GetExtendedUdpTable(
-          table, &bytes, FALSE, AF_INET,
-          UDP_TABLE_OWNER_PID, 0) != NO_ERROR) {
-    return 0;
+  if (family == AF_INET) {
+    auto* table =
+        reinterpret_cast<PMIB_UDPTABLE_OWNER_PID>(
+            buffer.data());
+    if (GetExtendedUdpTable(
+            table, &bytes, FALSE, family,
+            UDP_TABLE_OWNER_PID, 0) != NO_ERROR) {
+      return std::nullopt;
+    }
+
+    std::size_t count = 0;
+    for (DWORD i = 0; i < table->dwNumEntries; ++i) {
+      if (table->table[i].dwOwningPid == pid) {
+        ++count;
+      }
+    }
+    return count;
   }
 
-  std::size_t count = 0;
-  for (DWORD i = 0; i < table->dwNumEntries; ++i) {
-    if (table->table[i].dwOwningPid == pid) {
-      ++count;
+  if (family == AF_INET6) {
+    auto* table =
+        reinterpret_cast<PMIB_UDP6TABLE_OWNER_PID>(
+            buffer.data());
+    if (GetExtendedUdpTable(
+            table, &bytes, FALSE, family,
+            UDP_TABLE_OWNER_PID, 0) != NO_ERROR) {
+      return std::nullopt;
     }
+
+    std::size_t count = 0;
+    for (DWORD i = 0; i < table->dwNumEntries; ++i) {
+      if (table->table[i].dwOwningPid == pid) {
+        ++count;
+      }
+    }
+    return count;
   }
-  return count;
+
+  return std::nullopt;
 }
 
 class SecurityTest : public ::testing::Test {
@@ -106,8 +157,14 @@ protected:
 
 TEST_F(SecurityTest, LocalCoreCreatesNoOutboundEndpoints) {
   const DWORD pid = GetCurrentProcessId();
-  const auto tcp_before = CountOwnedEstablishedTcp(pid);
-  const auto udp_before = CountOwnedUdpEndpoints(pid);
+  const auto tcp4_before = CountOwnedEstablishedTcp(pid, AF_INET);
+  const auto tcp6_before = CountOwnedEstablishedTcp(pid, AF_INET6);
+  const auto udp4_before = CountOwnedUdpEndpoints(pid, AF_INET);
+  const auto udp6_before = CountOwnedUdpEndpoints(pid, AF_INET6);
+  ASSERT_TRUE(tcp4_before.has_value());
+  ASSERT_TRUE(tcp6_before.has_value());
+  ASSERT_TRUE(udp4_before.has_value());
+  ASSERT_TRUE(udp6_before.has_value());
 
   cx::storage::Database database(root_ / "data.db");
   ASSERT_TRUE(database.Open());
@@ -138,12 +195,19 @@ TEST_F(SecurityTest, LocalCoreCreatesNoOutboundEndpoints) {
 
   Sleep(100);
 
-  EXPECT_EQ(
-      CountOwnedEstablishedTcp(pid),
-      tcp_before);
-  EXPECT_EQ(
-      CountOwnedUdpEndpoints(pid),
-      udp_before);
+  const auto tcp4_after = CountOwnedEstablishedTcp(pid, AF_INET);
+  const auto tcp6_after = CountOwnedEstablishedTcp(pid, AF_INET6);
+  const auto udp4_after = CountOwnedUdpEndpoints(pid, AF_INET);
+  const auto udp6_after = CountOwnedUdpEndpoints(pid, AF_INET6);
+  ASSERT_TRUE(tcp4_after.has_value());
+  ASSERT_TRUE(tcp6_after.has_value());
+  ASSERT_TRUE(udp4_after.has_value());
+  ASSERT_TRUE(udp6_after.has_value());
+
+  EXPECT_EQ(*tcp4_after, *tcp4_before);
+  EXPECT_EQ(*tcp6_after, *tcp6_before);
+  EXPECT_EQ(*udp4_after, *udp4_before);
+  EXPECT_EQ(*udp6_after, *udp6_before);
 }
 
 TEST(SecurityPolicyTest, UnsafeAndRemoteInputsFailClosed) {
