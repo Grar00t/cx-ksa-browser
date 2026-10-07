@@ -44,11 +44,10 @@ TEST(StorageDefaultPath, CreatesDatabaseUnderAppData) {
       std::filesystem::path(appdata) / L"CX Build" / L"data.db";
   std::free(appdata);
 
+  // Verify the default-path calculation without opening the real APPDATA
+  // database. Migration and CRUD behavior is covered by isolated temp DBs.
   cx::storage::Database database;
   EXPECT_EQ(database.path(), expected);
-  ASSERT_TRUE(database.Open());
-  EXPECT_TRUE(std::filesystem::exists(expected));
-  EXPECT_EQ(database.SchemaVersion(), 3);
 }
 
 TEST_F(StorageTest, SettingsCrudWorks) {
