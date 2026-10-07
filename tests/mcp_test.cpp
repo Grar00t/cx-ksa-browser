@@ -149,6 +149,27 @@ TEST_F(McpTest, MissingAllowlistStartsEmptyAndPersists) {
   EXPECT_EQ(*stored, server);
 }
 
+TEST_F(McpTest, NetworkAndNonFixedExecutablePathsAreRejected) {
+  auto server = EchoServer();
+
+  server.command = R"(\\server\share\remote.exe)";
+  EXPECT_FALSE(cx::mcp::AllowlistManager::ValidateServer(server));
+
+  bool exercised_non_fixed_drive = false;
+  for (wchar_t letter = L'Z'; letter >= L'D'; --letter) {
+    const std::wstring root{letter, L':', L'\\'};
+    if (GetDriveTypeW(root.c_str()) == DRIVE_FIXED) {
+      continue;
+    }
+
+    server.command = WideToUtf8(root + L"remote.exe");
+    EXPECT_FALSE(cx::mcp::AllowlistManager::ValidateServer(server));
+    exercised_non_fixed_drive = true;
+    break;
+  }
+  EXPECT_TRUE(exercised_non_fixed_drive);
+}
+
 TEST_F(McpTest, Utf8BomConfigLoads) {
   const auto path = root_ / "config" / "bom.json";
   {
