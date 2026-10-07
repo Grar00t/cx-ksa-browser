@@ -1,0 +1,2 @@
+third_party/sqlite/** -text -whitespace
+third_party/googletest/** -text -whitespace
