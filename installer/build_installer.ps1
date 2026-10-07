@@ -1,4 +1,5 @@
 param(
+    [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Release"
 )
 
@@ -55,11 +56,14 @@ Copy-Item (Join-Path $repo "LICENSE") $portableRoot
 Copy-Item (Join-Path $repo "NOTICE") $portableRoot
 Copy-Item (Join-Path $repo "PRIVACY.md") $portableRoot
 Copy-Item (Join-Path $repo "SECURITY.md") $portableRoot
-Copy-Item (Join-Path $repo "docs\INSTALL.md") $portableRoot
+$portableDocs = Join-Path $portableRoot "docs"
+New-Item -ItemType Directory -Force -Path $portableDocs | Out-Null
+Copy-Item (Join-Path $repo "docs\INSTALL.md") $portableDocs
+Copy-Item (Join-Path $repo "docs\PRIVACY_POLICY.md") $portableDocs
 
 Compress-Archive -Path (Join-Path $portableRoot "*") -DestinationPath $portableZip -CompressionLevel Optimal
 
-& $iscc $iss
+& $iscc "/DBuildConfiguration=$Configuration" $iss
 if ($LASTEXITCODE -ne 0) {
     throw "Inno Setup compilation failed with exit code $LASTEXITCODE"
 }
