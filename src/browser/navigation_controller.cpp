@@ -152,12 +152,15 @@ bool NavigationController::Reload() {
     return false;
   }
 
-  pending_tab_id_ = tabs_.active_tab_id();
+  const auto active = tabs_.active_tab();
+  if (!active.has_value()) {
+    return false;
+  }
 
-  pending_record_visit_ = true;
+  pending_intents_.push_back(NavigationIntent{
+      active->id, true, false, active->url});
   if (!surface_->ReloadPage()) {
-    pending_tab_id_ = 0;
-    pending_record_visit_ = false;
+    pending_intents_.pop_back();
     return false;
   }
   return true;
@@ -174,64 +177,130 @@ bool NavigationController::CanGoForward() const {
       stack->index + 1 < stack->entries.size();
 }
 
-void NavigationController::OnNavigationCompleted(
-    bool success,
-    std::string_view final_url,
-    std::string_view title) {
-  const auto active = tabs_.active_tab();
-  if (!active.has_value()) {
-    pending_tab_id_ = 0;
-    pending_record_visit_ = false;
+void NavigationController::OnNavigationStarted(
+    std::uint64_t navigation_id,
+    std::string_view target_url) {
+  if (navigation_id == 0) {
     return;
   }
 
+  const auto existing = inflight_navigations_.find(navigation_id);
+  if (existing != inflight_navigations_.end()) {
+    if (!target_url.empty()) {
+      existing->second.requested_url = std::string(target_url);
+    }
+    return;
+  }
+
+  NavigationIntent intent;
+  if (!pending_intents_.empty()) {
+    intent = std::move(pending_intents_.front());
+    pending_intents_.pop_front();
+    if (!target_url.empty()) {
+      intent.requested_url = std::string(target_url);
+    }
+  } else {
+    const auto active = tabs_.active_tab();
+    if (!active.has_value()) {
+      return;
+    }
+    intent.tab_id = active->id;
+    intent.record_visit = true;
+    intent.append_stack_entry = true;
+    intent.requested_url = target_url.empty()
+        ? active->url
+        : std::string(target_url);
+  }
+
+  inflight_navigations_.emplace(
+      navigation_id, std::move(intent));
+}
+
+void NavigationController::OnNavigationCompleted(
+    std::uint64_t navigation_id,
+    bool success,
+    std::string_view final_url,
+    std::string_view title) {
+  const auto pending =
+      inflight_navigations_.find(navigation_id);
+  if (pending == inflight_navigations_.end()) {
+    return;
+  }
+
+  const NavigationIntent intent = pending->second;
+  inflight_navigations_.erase(pending);
   if (!success) {
-    pending_tab_id_ = 0;
-    pending_record_visit_ = false;
+    return;
+  }
+
+  const auto tab = std::find_if(
+      tabs_.tabs().begin(), tabs_.tabs().end(),
+      [&intent](const auto& candidate) {
+        return candidate.id == intent.tab_id;
+      });
+  if (tab == tabs_.tabs().end()) {
     return;
   }
 
   const std::string effective_url =
       final_url.empty()
-          ? active->url
+          ? (intent.requested_url.empty()
+                 ? tab->url
+                 : intent.requested_url)
           : std::string(final_url);
   const std::string effective_title =
       title.empty()
-          ? (active->title.empty()
+          ? (tab->title.empty()
                  ? effective_url
-                 : active->title)
+                 : tab->title)
           : std::string(title);
 
-  tabs_.UpdateTab(
-      active->id,
-      effective_url,
-      effective_title);
+  if (!tabs_.UpdateTab(
+          intent.tab_id,
+          effective_url,
+          effective_title)) {
+    return;
+  }
 
-  auto& stack = EnsureStack(active->id);
-  if (stack.entries.empty()) {
+  auto& stack = EnsureStack(intent.tab_id);
+  if (intent.append_stack_entry) {
+    if (!stack.entries.empty() &&
+        stack.index + 1 < stack.entries.size()) {
+      stack.entries.erase(
+          stack.entries.begin() +
+              static_cast<std::ptrdiff_t>(stack.index + 1),
+          stack.entries.end());
+    }
+    if (stack.entries.empty() ||
+        stack.entries[stack.index] != effective_url) {
+      stack.entries.push_back(effective_url);
+      stack.index = stack.entries.size() - 1;
+    }
+  } else if (stack.entries.empty()) {
     stack.entries.push_back(effective_url);
     stack.index = 0;
   } else {
     stack.entries[stack.index] = effective_url;
   }
 
-  if (pending_record_visit_ &&
-      pending_tab_id_ == active->id) {
-    history_.RecordVisit(
-        effective_url, effective_title);
+  if (intent.record_visit) {
+    history_.RecordVisit(effective_url, effective_title);
   }
-
-  pending_tab_id_ = 0;
-  pending_record_visit_ = false;
 }
 
 void NavigationController::ForgetTab(
     std::int64_t tab_id) {
   stacks_.erase(tab_id);
-  if (pending_tab_id_ == tab_id) {
-    pending_tab_id_ = 0;
-    pending_record_visit_ = false;
-  }
+  std::erase_if(
+      pending_intents_,
+      [tab_id](const NavigationIntent& intent) {
+        return intent.tab_id == tab_id;
+      });
+  std::erase_if(
+      inflight_navigations_,
+      [tab_id](const auto& entry) {
+        return entry.second.tab_id == tab_id;
+      });
 }
 
 NavigationController::Stack&
@@ -304,12 +373,15 @@ bool NavigationController::SendNavigate(
     return false;
   }
 
-  pending_tab_id_ = tabs_.active_tab_id();
-  pending_record_visit_ = record_visit;
+  const auto active = tabs_.active_tab();
+  if (!active.has_value()) {
+    return false;
+  }
 
+  pending_intents_.push_back(NavigationIntent{
+      active->id, record_visit, false, std::string(url)});
   if (!surface_->NavigateTo(wide)) {
-    pending_tab_id_ = 0;
-    pending_record_visit_ = false;
+    pending_intents_.pop_back();
     return false;
   }
   return true;
