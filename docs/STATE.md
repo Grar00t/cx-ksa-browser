@@ -1,9 +1,21 @@
 # Project State
 
 ## Current Status
-Phase: P13 Arabic-locale readiness is the release-candidate default-branch state represented by the integrated P01-P13 history. Verification evidence below remains tied to the exact branches and runs that produced it.
+Phase: v1.0.0 release readiness on the default `main` branch. The integrated history includes P01-P13 plus navigation-ID correlation, local-file navigation hardening, Windows CI header repair, version-independent package verification, and 1.0.0 packaging metadata. Historical evidence below remains tied to the exact branches and runs that produced it.
 
-CX now includes final user/developer documentation, real screenshots, expanded unit/integration/UI/security/performance tests, an enforced line-coverage gate, Windows packaging, portable packaging, and a GitHub Actions workflow.
+CX includes final user/developer documentation, real screenshots, expanded unit/integration/UI/security/performance tests, an enforced line-coverage gate, Windows packaging, portable packaging, and a GitHub Actions workflow.
+
+## v1.0.0 Release Verification
+
+Verified on 2026-10-08 before tagging:
+- GitHub Actions run `37702770819` passed all three jobs: Windows build/tests, coverage gate, and installer/portable packaging.
+- Local Release test run passed 84/84 GoogleTests from 20 suites.
+- Local package verification passed install/uninstall cleanup, Start Menu shortcut creation, optional PATH add/remove, zero unexpected installed files, zero CX-owned background processes after close, portable launch, and portable-local data placement.
+- Installer output: `CX-Build-Setup-1.0.0.exe`, 2,675,096 bytes in the observed local build.
+- Portable output: `CX-Build-Portable-1.0.0.zip`, 767,211 bytes in the observed local build.
+- Observed installer signing status: `NotSigned`; a usable Authenticode certificate was unavailable.
+- Portable-media verification used `SIMULATED_NO_REMOVABLE_DRIVE`; physical removable-media execution remains unverified.
+- The release tag and GitHub Release were not yet created at the time of this verification record.
 
 ## Documentation
 User-facing:
