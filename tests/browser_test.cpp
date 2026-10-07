@@ -442,9 +442,32 @@ TEST(NavigationAddressTest, NormalizesHostsAndRejectsUnsafeSchemes) {
   ASSERT_TRUE(secure.has_value());
   EXPECT_EQ(*secure, "https://example.com");
 
+  EXPECT_TRUE(
+      cx::browser::NavigationController::IsAllowedUrl(
+          L"file:///C:/Users/A/report.txt"));
+  EXPECT_TRUE(
+      cx::browser::NavigationController::IsAllowedUrl(
+          L"file://localhost/C:/Users/A/report.txt"));
+  EXPECT_TRUE(
+      cx::browser::NavigationController::IsAllowedUrl(
+          L"about:blank"));
+
+  EXPECT_FALSE(
+      cx::browser::NavigationController::IsAllowedUrl(
+          L"file://server/share/report.txt"));
+  EXPECT_FALSE(
+      cx::browser::NavigationController::IsAllowedUrl(
+          L"file://localhost.evil/share/report.txt"));
+  EXPECT_FALSE(
+      cx::browser::NavigationController::IsAllowedUrl(
+          L"about:blankevil"));
+
   EXPECT_FALSE(
       cx::browser::NavigationController::NormalizeAddress(
           L"javascript:alert(1)").has_value());
+  EXPECT_FALSE(
+      cx::browser::NavigationController::NormalizeAddress(
+          L"file://server/share/report.txt").has_value());
   EXPECT_FALSE(
       cx::browser::NavigationController::NormalizeAddress(
           L"   ").has_value());
