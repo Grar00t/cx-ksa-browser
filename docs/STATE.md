@@ -1,7 +1,7 @@
 # Project State
 
 ## Current Status
-Phase: P13 Arabic-locale readiness is verified locally on `prompt-P13-arabic-locale`, based on P12 without merging to `main`.
+Phase: P13 Arabic-locale readiness is the release-candidate default-branch state represented by the integrated P01-P13 history. Verification evidence below remains tied to the exact branches and runs that produced it.
 
 CX now includes final user/developer documentation, real screenshots, expanded unit/integration/UI/security/performance tests, an enforced line-coverage gate, Windows packaging, portable packaging, and a GitHub Actions workflow.
 
