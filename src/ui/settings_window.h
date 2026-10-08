@@ -55,8 +55,11 @@ public:
   void Show(HWND owner);
   void Refresh();
 
-  static const std::array<PrivacySettingSpec, 3>&
+  static const std::array<PrivacySettingSpec, 5>&
       PrivacySettings();
+
+  bool DeveloperModeEnabled() const;
+  bool SmartScreenEnabled() const;
 
 private:
   static LRESULT CALLBACK WndProc(

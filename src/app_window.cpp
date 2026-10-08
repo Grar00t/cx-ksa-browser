@@ -8,12 +8,14 @@
 #include "browser/bookmark_service.h"
 #include "browser/history_service.h"
 #include "browser/tab_manager.h"
+#include "browser/webview_security_policy.h"
 #include "localization/strings.h"
 #include "mcp/allowlist_dialog.h"
 #include "mcp/mcp_client.h"
 
 #include <WebView2EnvironmentOptions.h>
 #include <commctrl.h>
+#include <shlwapi.h>
 
 #include <algorithm>
 #include <string>
@@ -181,6 +183,7 @@ int AppWindow::Run(HINSTANCE instance, int show_command) {
 
   webview_.Reset();
   controller_.Reset();
+  environment_.Reset();
   OleUninitialize();
   return static_cast<int>(message.wParam);
 }
@@ -862,6 +865,7 @@ void AppWindow::InitializeWebView() {
                   return result;
                 }
 
+                environment_ = environment;
                 return environment->CreateCoreWebView2Controller(
                     hwnd_,
                     Callback<
@@ -878,7 +882,17 @@ void AppWindow::InitializeWebView() {
                           }
 
                           controller_ = controller;
-                          controller_->get_CoreWebView2(&webview_);
+                          if (FAILED(controller_->get_CoreWebView2(&webview_)) ||
+                              !webview_ ||
+                              !ConfigureWebViewSettings()) {
+                            MessageBoxW(
+                                hwnd_,
+                                L"Required WebView2 security settings are unavailable.",
+                                L"CX Build", MB_ICONERROR);
+                            webview_.Reset();
+                            controller_.Reset();
+                            return E_FAIL;
+                          }
 
                           Microsoft::WRL::ComPtr<
                               ICoreWebView2Controller2> controller2;
@@ -934,17 +948,73 @@ void AppWindow::InitializeWebView() {
                               &completed_token);
 
                           EventRegistrationToken new_window_token{};
-                          webview_->add_NewWindowRequested(
-                              Callback<
-                                  ICoreWebView2NewWindowRequestedEventHandler>(
-                                  [this](
-                                      ICoreWebView2*,
-                                      ICoreWebView2NewWindowRequestedEventArgs* args)
-                                      -> HRESULT {
-                                    HandleNewWindow(args);
-                                    return S_OK;
-                                  }).Get(),
-                              &new_window_token);
+                          if (FAILED(webview_->add_NewWindowRequested(
+                                  Callback<
+                                      ICoreWebView2NewWindowRequestedEventHandler>(
+                                      [this](
+                                          ICoreWebView2*,
+                                          ICoreWebView2NewWindowRequestedEventArgs* args)
+                                          -> HRESULT {
+                                        HandleNewWindow(args);
+                                        return S_OK;
+                                      }).Get(),
+                                  &new_window_token))) {
+                            return E_FAIL;
+                          }
+
+                          EventRegistrationToken permission_token{};
+                          if (FAILED(webview_->add_PermissionRequested(
+                                  Callback<
+                                      ICoreWebView2PermissionRequestedEventHandler>(
+                                      [this](
+                                          ICoreWebView2*,
+                                          ICoreWebView2PermissionRequestedEventArgs* args)
+                                          -> HRESULT {
+                                        HandlePermissionRequested(args);
+                                        return S_OK;
+                                      }).Get(),
+                                  &permission_token))) {
+                            return E_FAIL;
+                          }
+
+                          Microsoft::WRL::ComPtr<ICoreWebView2_4> webview4;
+                          if (FAILED(webview_.As(&webview4))) {
+                            return E_NOINTERFACE;
+                          }
+                          EventRegistrationToken download_token{};
+                          if (FAILED(webview4->add_DownloadStarting(
+                                  Callback<
+                                      ICoreWebView2DownloadStartingEventHandler>(
+                                      [this](
+                                          ICoreWebView2*,
+                                          ICoreWebView2DownloadStartingEventArgs* args)
+                                          -> HRESULT {
+                                        HandleDownloadStarting(args);
+                                        return S_OK;
+                                      }).Get(),
+                                  &download_token))) {
+                            return E_FAIL;
+                          }
+
+                          if (FAILED(webview_->AddWebResourceRequestedFilter(
+                                  L"*",
+                                  COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL))) {
+                            return E_FAIL;
+                          }
+                          EventRegistrationToken resource_token{};
+                          if (FAILED(webview_->add_WebResourceRequested(
+                                  Callback<
+                                      ICoreWebView2WebResourceRequestedEventHandler>(
+                                      [this](
+                                          ICoreWebView2*,
+                                          ICoreWebView2WebResourceRequestedEventArgs* args)
+                                          -> HRESULT {
+                                        HandleWebResourceRequested(args);
+                                        return S_OK;
+                                      }).Get(),
+                                  &resource_token))) {
+                            return E_FAIL;
+                          }
 
                           navigation_.ActivateTab(
                               tabs_.active_tab_id());
@@ -959,6 +1029,43 @@ void AppWindow::InitializeWebView() {
         L"WebView2 initialization call failed.",
         L"CX Build", MB_ICONERROR);
   }
+}
+
+bool AppWindow::ConfigureWebViewSettings() {
+  Microsoft::WRL::ComPtr<ICoreWebView2Settings> settings;
+  if (!webview_ ||
+      FAILED(webview_->get_Settings(&settings)) ||
+      !settings) {
+    return false;
+  }
+
+  const BOOL developer_mode =
+      settings_window_.DeveloperModeEnabled() ? TRUE : FALSE;
+  if (FAILED(settings->put_IsStatusBarEnabled(FALSE)) ||
+      FAILED(settings->put_AreDevToolsEnabled(developer_mode)) ||
+      FAILED(settings->put_AreDefaultContextMenusEnabled(
+          developer_mode)) ||
+      FAILED(settings->put_AreHostObjectsAllowed(FALSE)) ||
+      FAILED(settings->put_IsWebMessageEnabled(FALSE))) {
+    return false;
+  }
+
+  Microsoft::WRL::ComPtr<ICoreWebView2Settings4> settings4;
+  if (FAILED(settings.As(&settings4)) || !settings4 ||
+      FAILED(settings4->put_IsPasswordAutosaveEnabled(FALSE)) ||
+      FAILED(settings4->put_IsGeneralAutofillEnabled(FALSE))) {
+    return false;
+  }
+
+  Microsoft::WRL::ComPtr<ICoreWebView2Settings8> settings8;
+  if (FAILED(settings.As(&settings8)) || !settings8 ||
+      FAILED(settings8->put_IsReputationCheckingRequired(
+          settings_window_.SmartScreenEnabled()
+              ? TRUE
+              : FALSE))) {
+    return false;
+  }
+  return true;
 }
 
 bool AppWindow::NavigateTo(std::wstring_view url) {
@@ -998,6 +1105,26 @@ void AppWindow::HandleNavigationStarting(
       args->put_Cancel(TRUE);
       SetBrowserStatus(L"Blocked unsafe navigation");
       return;
+    }
+
+    const auto active = tabs_.active_tab();
+    if (active.has_value() &&
+        cx::browser::WebViewSecurityPolicy::IsCrossOrigin(
+            Utf8ToWide(active->url), target)) {
+      std::wstring prompt =
+          L"Allow cross-origin navigation to:\n\n";
+      const auto origin =
+          cx::browser::WebViewSecurityPolicy::OriginFromUrl(target);
+      prompt += origin.value_or(target);
+      if (MessageBoxW(
+              hwnd_, prompt.c_str(),
+              L"CX Navigation Permission",
+              MB_YESNO | MB_ICONWARNING |
+                  MB_DEFBUTTON2) != IDYES) {
+        args->put_Cancel(TRUE);
+        SetBrowserStatus(L"Blocked cross-origin navigation");
+        return;
+      }
     }
   }
 
@@ -1087,6 +1214,17 @@ void AppWindow::HandleNewWindow(
     return;
   }
 
+  std::wstring prompt =
+      L"Allow this page to open a new tab?\n\n";
+  prompt += target;
+  if (MessageBoxW(
+          hwnd_, prompt.c_str(),
+          L"CX New Window Permission",
+          MB_YESNO | MB_ICONWARNING |
+              MB_DEFBUTTON2) != IDYES) {
+    return;
+  }
+
   const auto id = tabs_.CreateTab();
   if (!id.has_value()) {
     return;
@@ -1095,6 +1233,107 @@ void AppWindow::HandleNewWindow(
   RefreshBrowserChrome();
   navigation_.NavigateAddress(target);
   RefreshBrowserChrome();
+}
+
+void AppWindow::HandlePermissionRequested(
+    ICoreWebView2PermissionRequestedEventArgs* args) {
+  if (!args) {
+    return;
+  }
+
+  args->put_State(COREWEBVIEW2_PERMISSION_STATE_DENY);
+  LPWSTR uri = nullptr;
+  std::wstring source = L"(unknown origin)";
+  if (SUCCEEDED(args->get_Uri(&uri)) && uri) {
+    source = uri;
+    CoTaskMemFree(uri);
+  }
+
+  std::wstring prompt =
+      L"Allow this origin to use a browser permission?\n\n";
+  prompt += source;
+  if (MessageBoxW(
+          hwnd_, prompt.c_str(),
+          L"CX Web Permission",
+          MB_YESNO | MB_ICONWARNING |
+              MB_DEFBUTTON2) == IDYES) {
+    args->put_State(COREWEBVIEW2_PERMISSION_STATE_ALLOW);
+  }
+}
+
+void AppWindow::HandleDownloadStarting(
+    ICoreWebView2DownloadStartingEventArgs* args) {
+  if (!args) {
+    return;
+  }
+
+  args->put_Cancel(TRUE);
+  std::wstring source = L"(unknown origin)";
+  Microsoft::WRL::ComPtr<ICoreWebView2DownloadOperation> operation;
+  if (SUCCEEDED(args->get_DownloadOperation(&operation)) &&
+      operation) {
+    LPWSTR uri = nullptr;
+    if (SUCCEEDED(operation->get_Uri(&uri)) && uri) {
+      source = uri;
+      CoTaskMemFree(uri);
+    }
+  }
+
+  std::wstring prompt =
+      L"Allow this download?\n\n";
+  prompt += source;
+  if (MessageBoxW(
+          hwnd_, prompt.c_str(),
+          L"CX Download Permission",
+          MB_YESNO | MB_ICONWARNING |
+              MB_DEFBUTTON2) == IDYES) {
+    args->put_Cancel(FALSE);
+  }
+}
+
+void AppWindow::HandleWebResourceRequested(
+    ICoreWebView2WebResourceRequestedEventArgs* args) {
+  if (!args) {
+    return;
+  }
+
+  Microsoft::WRL::ComPtr<ICoreWebView2WebResourceRequest> request;
+  if (FAILED(args->get_Request(&request)) || !request) {
+    BlockWebResource(args);
+    return;
+  }
+
+  LPWSTR uri = nullptr;
+  if (FAILED(request->get_Uri(&uri)) || !uri) {
+    BlockWebResource(args);
+    return;
+  }
+
+  const std::wstring target(uri);
+  CoTaskMemFree(uri);
+  if (!cx::browser::WebViewSecurityPolicy::IsAllowedResourceUrl(
+          target)) {
+    BlockWebResource(args);
+  }
+}
+
+void AppWindow::BlockWebResource(
+    ICoreWebView2WebResourceRequestedEventArgs* args) {
+  if (!args || !environment_) {
+    return;
+  }
+
+  Microsoft::WRL::ComPtr<IStream> body;
+  body.Attach(SHCreateMemStream(nullptr, 0));
+  Microsoft::WRL::ComPtr<ICoreWebView2WebResourceResponse> response;
+  if (SUCCEEDED(environment_->CreateWebResourceResponse(
+          body.Get(), 403, L"Blocked by CX",
+          L"Content-Type: text/plain\r\n"
+          L"Cache-Control: no-store\r\n",
+          &response)) &&
+      response) {
+    args->put_Response(response.Get());
+  }
 }
 
 LRESULT CALLBACK AppWindow::WndProc(

@@ -62,6 +62,7 @@ private:
   void HandleNotify(const NMHDR* header);
 
   void InitializeWebView();
+  bool ConfigureWebViewSettings();
   void LayoutControls();
   void RefreshBrowserChrome();
   void RefreshTabs();
@@ -82,6 +83,14 @@ private:
       ICoreWebView2NavigationCompletedEventArgs* args);
   void HandleNewWindow(
       ICoreWebView2NewWindowRequestedEventArgs* args);
+  void HandlePermissionRequested(
+      ICoreWebView2PermissionRequestedEventArgs* args);
+  void HandleDownloadStarting(
+      ICoreWebView2DownloadStartingEventArgs* args);
+  void HandleWebResourceRequested(
+      ICoreWebView2WebResourceRequestedEventArgs* args);
+  void BlockWebResource(
+      ICoreWebView2WebResourceRequestedEventArgs* args);
 
   cx::agent::AgentCore& agent_;
   cx::agent::PermissionManager& permissions_;
@@ -110,6 +119,7 @@ private:
   HWND status_label_ = nullptr;
   HWND tooltip_ = nullptr;
 
+  Microsoft::WRL::ComPtr<ICoreWebView2Environment> environment_;
   Microsoft::WRL::ComPtr<ICoreWebView2Controller> controller_;
   Microsoft::WRL::ComPtr<ICoreWebView2> webview_;
 };

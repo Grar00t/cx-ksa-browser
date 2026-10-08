@@ -38,6 +38,10 @@ CX uses Microsoft WebView2 as its web renderer. WebView2 is a separate Microsoft
 
 CX configures privacy-oriented renderer arguments, but CX does not claim that the WebView2 process tree is completely network silent.
 
+Microsoft Defender SmartScreen reputation checking is disabled by CX by default. A user can explicitly opt in in Settings; the change applies after restart. When enabled, WebView2 may send page, download, and reputation information to Microsoft under Microsoft's privacy terms and the applicable Windows or Microsoft Edge SmartScreen settings. CX does not proxy or receive those reputation queries.
+
+Password autosave and general form autofill are disabled. Developer Tools, default context-menu extras, web messages, and host objects are also disabled unless the user explicitly enables CX Developer Mode and restarts. Developer Mode does not enable CX telemetry, cloud sync, or an auto-update client.
+
 ## 7. Agent and MCP
 
 The local agent is permission-gated. Capabilities are denied unless granted. MCP connectivity in the current design is local stdio to an explicitly allowlisted executable path.
