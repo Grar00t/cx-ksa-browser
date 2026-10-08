@@ -319,7 +319,7 @@ bool JsonRpcValidator::ValidateRequest(
     if (cursor.Consume('}')) {
       break;
     }
-    if (!cursor.Consume(',')) {
+    if (!cursor.Consume(',') || cursor.Peek() == '}') {
       return false;
     }
   }
