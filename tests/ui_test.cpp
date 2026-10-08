@@ -10,6 +10,7 @@
 #include "localization/strings.h"
 #include "storage/database.h"
 #include "ui/agent_workspace.h"
+#include "ui/context_graph.h"
 #include "ui/design_tokens.h"
 #include "ui/najdi_theme.h"
 #include "ui/privacy_dashboard.h"
@@ -137,6 +138,61 @@ TEST(AgentWorkspaceTest, RunningBlocksAllPointerTargetsExceptEmergencyStop) {
   policy.SetAgentRunning(false);
   EXPECT_FALSE(policy.BlocksPointer(
       cx::ui::WorkspacePointerTarget::BrowserContent));
+}
+
+TEST(ContextGraphTest, RemovesPathsQueriesFragmentsAndCredentials) {
+  EXPECT_EQ(
+      cx::ui::SafeOriginLabel(
+          "https://user:secret@Example.COM:8443/private?q=token#part"),
+      "https://example.com:8443");
+  EXPECT_EQ(
+      cx::ui::SafeOriginLabel("javascript:alert(1)"),
+      "Local or blocked");
+  EXPECT_EQ(
+      cx::ui::SafeOriginLabel("about:blank"),
+      "Local new tab");
+}
+
+TEST(ContextGraphTest, GroupsTabsByOriginAndMarksActiveTab) {
+  const std::vector<cx::ui::ContextTabInput> tabs{
+      {11, "https://example.test/a?secret=1", "Alpha", false},
+      {12, "https://example.test/b", "Beta", true},
+      {13, "https://other.test/", "Other", false},
+  };
+
+  const auto graph = cx::ui::BuildContextGraph(tabs);
+  EXPECT_EQ(graph.edges.size(), 3u);
+  EXPECT_EQ(graph.nodes.size(), 5u);
+
+  const auto active = std::find_if(
+      graph.nodes.begin(), graph.nodes.end(),
+      [](const auto& node) { return node.active; });
+  ASSERT_NE(active, graph.nodes.end());
+  EXPECT_EQ(active->tab_id, 12);
+  EXPECT_EQ(active->label, "Beta");
+
+  for (const auto& node : graph.nodes) {
+    EXPECT_EQ(node.label.find("secret"), std::string::npos);
+    EXPECT_GE(node.x, 0.0F);
+    EXPECT_LE(node.x, 1.0F);
+    EXPECT_GE(node.y, 0.0F);
+    EXPECT_LE(node.y, 1.0F);
+  }
+}
+
+TEST(ContextGraphTest, CapsTabCountToKeepTheViewQuiet) {
+  std::vector<cx::ui::ContextTabInput> tabs;
+  for (std::int64_t id = 1; id <= 30; ++id) {
+    tabs.push_back({
+        id,
+        "https://example.test/" + std::to_string(id),
+        "Tab " + std::to_string(id),
+        id == 30});
+  }
+
+  const auto graph = cx::ui::BuildContextGraph(tabs, 12);
+  EXPECT_EQ(graph.edges.size(), 12u);
+  EXPECT_EQ(graph.nodes.size(), 13u);
 }
 
 TEST(DesignSystemTest, AgentWorkspaceStaysCompactAndLeavesBrowserUsable) {
