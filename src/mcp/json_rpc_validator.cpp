@@ -160,10 +160,21 @@ public:
     if (input_[position_] == '[') {
       return Array(depth + 1);
     }
-    return Number() ||
-        Literal("true") ||
-        Literal("false") ||
-        Literal("null");
+    const char first = input_[position_];
+    if (first == '-' || std::isdigit(
+            static_cast<unsigned char>(first))) {
+      return Number();
+    }
+    if (first == 't') {
+      return Literal("true");
+    }
+    if (first == 'f') {
+      return Literal("false");
+    }
+    if (first == 'n') {
+      return Literal("null");
+    }
+    return false;
   }
 
   bool Object(std::size_t depth) {
