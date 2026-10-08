@@ -376,7 +376,7 @@ TEST_F(ConfigTest, FutureSchemaVersionIsRejected) {
   ASSERT_EQ(
       sqlite3_exec(
           raw,
-          "INSERT INTO schema_migrations(version) VALUES(4);",
+          "INSERT INTO schema_migrations(version) VALUES(5);",
           nullptr, nullptr, nullptr),
       SQLITE_OK);
   ASSERT_EQ(sqlite3_close(raw), SQLITE_OK);
