@@ -85,3 +85,20 @@ The native menu bar remains a Windows system surface rather than a custom imitat
 CX is a WebView2-based Windows browser shell with local SQLite state, deny-by-default Agent/MCP permissions, reproducible build/test/coverage paths, and no CX telemetry/cloud sync/remote-update client by default.
 
 Offline/local ALLaM retrieval is a product direction, but **no ALLaM integration exists in the current repository at this revision**. It must not be presented as shipped until an implementation and verification path are added.
+
+
+## Agent activity workspace
+
+The agent workspace is an original CX component. It uses the CX space-teal
+tokens and does not reproduce another product's layout, assets, icons, or
+strings.
+
+When the agent enters the running state, CX places a constant translucent
+activity shield over the complete client workspace. The shield intercepts
+pointer input to browser chrome, page content, and the agent panel. A separate
+bottom strip remains above the shield and exposes the only pointer action:
+**Stop agent**. Stopping restores normal pointer input immediately.
+
+The left panel keeps permission scope and state visible. Voice input is shown
+as unavailable until a local, tested speech implementation exists; the UI must
+not imply that microphone capture is active.
