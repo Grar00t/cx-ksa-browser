@@ -66,8 +66,7 @@ WebViewSecurityPolicy::OriginFromUrl(
           : authority_end - authority_start));
   if (authority.empty() ||
       authority.find(L'@') != std::wstring::npos ||
-      authority.find_first_of(L" 	
-\") !=
+      authority.find_first_of(L" \t\r\n\\") !=
           std::wstring::npos) {
     return std::nullopt;
   }
