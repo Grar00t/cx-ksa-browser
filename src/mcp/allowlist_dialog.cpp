@@ -284,8 +284,7 @@ void AllowlistDialog::AddServer() {
   server.id = MakeServerId(path, allowlist_);
   server.command = WideToUtf8(path.wstring());
 
-  if (!AllowlistManager::ValidateServer(server) ||
-      !allowlist_.AddOrUpdate(server)) {
+  if (!allowlist_.AddOrUpdate(server)) {
     SetWindowTextW(
         status_, L"Could not save this server to the allowlist.");
     return;

@@ -26,13 +26,29 @@ constexpr std::array<CapabilityDescriptor, 7> kCapabilities{{
      L"Allows the agent to connect to an explicitly configured MCP endpoint."},
 }};
 
-constexpr std::array<ActionRule, 6> kActionRules{{
+bool IsValidScope(const PermissionScope& scope) {
+  if (scope.tab_id <= 0 ||
+      scope.origin.empty() ||
+      scope.origin.size() > 2048) {
+    return false;
+  }
+  return scope.origin.starts_with("https://") ||
+      scope.origin.starts_with("http://");
+}
+
+constexpr std::array<ActionRule, 12> kActionRules{{
     {"browser.read_page", Capability::ReadPage},
     {"browser.navigate", Capability::Navigate},
     {"tabs.manage", Capability::ManageTabs},
     {"clipboard.write", Capability::ClipboardWrite},
     {"native_messaging.connect", Capability::NativeMessaging},
     {"mcp.connect", Capability::McpConnect},
+    {"form.submit", Capability::Navigate},
+    {"purchase.confirm", Capability::Navigate},
+    {"file.upload", Capability::NativeMessaging},
+    {"file.download", Capability::NativeMessaging},
+    {"credential.fill", Capability::ClipboardWrite},
+    {"browser.navigate_cross_origin", Capability::Navigate},
 }};
 
 }  // namespace
@@ -91,6 +107,47 @@ bool PermissionManager::Revoke(Capability capability) {
 
 bool PermissionManager::RevokeAll() {
   return database_.RevokeAllPermissions();
+}
+
+bool PermissionManager::IsGrantedScoped(
+    Capability capability,
+    const PermissionScope& scope) const {
+  if (!IsValidScope(scope)) {
+    return false;
+  }
+  const auto value = database_.GetScopedPermission(
+      scope.tab_id,
+      scope.origin,
+      DescribeCapability(capability).id);
+  return value.has_value() && *value;
+}
+
+bool PermissionManager::EnsureScoped(
+    HWND owner,
+    Capability capability,
+    const PermissionScope& scope) {
+  if (!IsValidScope(scope)) {
+    return false;
+  }
+  if (IsGrantedScoped(capability, scope)) {
+    return true;
+  }
+
+  const auto& descriptor = DescribeCapability(capability);
+  const bool granted =
+      prompt_.RequestScoped(owner, descriptor, scope);
+  if (!database_.SetScopedPermission(
+          scope.tab_id,
+          scope.origin,
+          descriptor.id,
+          granted)) {
+    return false;
+  }
+  return granted;
+}
+
+bool PermissionManager::RevokeTab(std::int64_t tab_id) {
+  return database_.RevokeTabPermissions(tab_id);
 }
 
 std::vector<Capability> PermissionManager::Granted() const {

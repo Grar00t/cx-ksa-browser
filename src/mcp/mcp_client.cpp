@@ -2,6 +2,7 @@
 
 #include "agent/agent_core.h"
 #include "mcp/allowlist_manager.h"
+#include "mcp/json_rpc_validator.h"
 #include "mcp/rate_limiter.h"
 
 #include <array>
@@ -145,6 +146,12 @@ bool McpClient::Start(HWND owner, std::string_view server_id) {
     logger_.Log(
         "mcp_server_denied_not_allowlisted",
         SafeLogToken(server_id));
+    return false;
+  }
+
+  if (!AllowlistManager::VerifyExecutableIdentity(*server)) {
+    logger_.Log(
+        "mcp_server_denied_identity_mismatch", server->id);
     return false;
   }
 
@@ -343,7 +350,8 @@ bool McpClient::SendRequest(
     std::string_view server_id,
     std::string_view json_line,
     std::string* response,
-    std::chrono::milliseconds timeout) {
+    std::chrono::milliseconds timeout,
+    std::int64_t tab_id) {
   logger_.Log(
       "mcp_request", RequestDetail(server_id, json_line.size()));
 
@@ -355,6 +363,22 @@ bool McpClient::SendRequest(
     logger_.Log(
         "mcp_request_rejected_invalid_frame",
         SafeLogToken(server_id));
+    return false;
+  }
+
+  std::string method;
+  if (!JsonRpcValidator::ValidateRequest(json_line, &method)) {
+    logger_.Log(
+        "mcp_request_rejected_invalid_json_rpc",
+        SafeLogToken(server_id));
+    return false;
+  }
+
+  if (agent_.state() != agent::AgentState::Running) {
+    logger_.Log(
+        "mcp_request_rejected_kill_switch",
+        SafeLogToken(server_id));
+    Stop();
     return false;
   }
 
@@ -373,7 +397,7 @@ bool McpClient::SendRequest(
     return false;
   }
 
-  if (!rate_limiter_.Allow(server_id)) {
+  if (!rate_limiter_.Allow(server_id, method, tab_id)) {
     logger_.Log(
         "mcp_request_rate_limited",
         SafeLogToken(server_id));

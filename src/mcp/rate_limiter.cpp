@@ -3,6 +3,19 @@
 #include <algorithm>
 
 namespace cx::mcp {
+namespace {
+
+std::string RateKey(
+    std::string_view server_id,
+    std::string_view tool_id,
+    std::int64_t tab_id) {
+  return std::string(server_id) + "\n" +
+      std::string(tool_id) + "\n" +
+      std::to_string(tab_id);
+}
+
+}  // namespace
+
 
 RateLimiter::RateLimiter(
     std::size_t max_requests_per_window,
@@ -12,13 +25,30 @@ RateLimiter::RateLimiter(
       window_(std::max(window, std::chrono::milliseconds(1))) {}
 
 bool RateLimiter::Allow(std::string_view server_id) {
-  return AllowAt(server_id, Clock::now());
+  return Allow(server_id, {}, 0);
 }
 
 bool RateLimiter::AllowAt(
     std::string_view server_id, TimePoint now) {
+  return AllowAt(server_id, {}, 0, now);
+}
+
+bool RateLimiter::Allow(
+    std::string_view server_id,
+    std::string_view tool_id,
+    std::int64_t tab_id) {
+  return AllowAt(
+      server_id, tool_id, tab_id, Clock::now());
+}
+
+bool RateLimiter::AllowAt(
+    std::string_view server_id,
+    std::string_view tool_id,
+    std::int64_t tab_id,
+    TimePoint now) {
   std::lock_guard<std::mutex> lock(mutex_);
-  auto& queue = requests_[std::string(server_id)];
+  auto& queue = requests_[
+      RateKey(server_id, tool_id, tab_id)];
 
   const auto cutoff = now - window_;
   while (!queue.empty() && queue.front() <= cutoff) {
@@ -42,7 +72,13 @@ std::chrono::milliseconds RateLimiter::window() const noexcept {
 
 void RateLimiter::Reset(std::string_view server_id) {
   std::lock_guard<std::mutex> lock(mutex_);
-  requests_.erase(std::string(server_id));
+  const std::string prefix =
+      std::string(server_id) + "\n";
+  std::erase_if(
+      requests_,
+      [&prefix](const auto& entry) {
+        return entry.first.starts_with(prefix);
+      });
 }
 
 }  // namespace cx::mcp

@@ -248,12 +248,12 @@ bool BackupRestore::VerifyDatabase(
         "SELECT COUNT(*) FROM sqlite_master "
         "WHERE type='table' AND name IN "
         "('settings','tabs','history','permissions',"
-        "'bookmarks','schema_migrations');",
+        "'bookmarks','schema_migrations','scoped_permissions');",
         -1,
         &statement,
         nullptr) == SQLITE_OK &&
         sqlite3_step(statement) == SQLITE_ROW &&
-        sqlite3_column_int(statement, 0) == 6;
+        sqlite3_column_int(statement, 0) == 7;
   }
 
   if (statement) {
@@ -280,7 +280,7 @@ bool BackupRestore::VerifyDatabase(
   }
 
   if (ok) {
-    constexpr std::array<const char*, 6> schema_probes{{
+    constexpr std::array<const char*, 7> schema_probes{{
         "SELECT key, value, updated_at FROM settings LIMIT 0;",
         "SELECT id, position, url, title, pinned, created_at, updated_at "
         "FROM tabs LIMIT 0;",
@@ -288,6 +288,8 @@ bool BackupRestore::VerifyDatabase(
         "SELECT capability, granted, updated_at FROM permissions LIMIT 0;",
         "SELECT id, url, title, created_at FROM bookmarks LIMIT 0;",
         "SELECT version, applied_at FROM schema_migrations LIMIT 0;",
+        "SELECT tab_id, origin, capability, granted, updated_at "
+        "FROM scoped_permissions LIMIT 0;",
     }};
     for (const char* probe : schema_probes) {
       if (!CanPrepare(db, probe)) {
