@@ -102,3 +102,17 @@ bottom strip remains above the shield and exposes the only pointer action:
 The left panel keeps permission scope and state visible. Voice input is shown
 as unavailable until a local, tested speech implementation exists; the UI must
 not imply that microphone capture is active.
+
+
+## Browsing context graph
+
+The graph is an original CX visualization of local browser state. It is not an
+Obsidian layout or implementation. Open tabs are linked to deduplicated origin
+nodes in a quiet two-column plot. Origin labels never include URL paths,
+queries, fragments, or embedded credentials.
+
+The active tab uses the agent-active token. Other labels stay muted until they
+are relevant: origin labels remain visible, while tab labels appear for the
+active or hovered node. Hover isolates immediate neighbors, and clicking a tab
+node activates that existing local tab. The model caps visible tabs to keep the
+view legible and performs no network requests.

@@ -4,6 +4,7 @@
 #include "browser/history_dialog.h"
 #include "browser/navigation_controller.h"
 #include "ui/agent_workspace.h"
+#include "ui/context_graph.h"
 
 #include <windows.h>
 #include <commctrl.h>
@@ -57,6 +58,8 @@ private:
       HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
   static LRESULT CALLBACK ActivityShieldProc(
       HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
+  static LRESULT CALLBACK ContextGraphProc(
+      HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
 
   bool Create(HINSTANCE instance, int show_command);
   void CreateMenus();
@@ -74,6 +77,11 @@ private:
   void SetBrowserStatus(std::wstring_view text);
   void SetAgentRunning(bool running);
   void RefreshAgentWorkspace();
+  void RefreshContextGraph();
+  void PaintContextGraph(HDC dc);
+  int HitTestContextGraph(POINT point) const;
+  void ActivateContextGraphNode(POINT point);
+  void UpdateContextGraphHover(POINT point);
   void AddTooltip(HWND control, const wchar_t* text);
 
   void NavigateAddressBar();
@@ -114,6 +122,7 @@ private:
   HWND new_tab_button_ = nullptr;
   HWND close_tab_button_ = nullptr;
   HWND agent_toggle_button_ = nullptr;
+  HWND graph_toggle_button_ = nullptr;
   HWND status_label_ = nullptr;
 
   HWND agent_panel_ = nullptr;
@@ -123,6 +132,7 @@ private:
   HWND agent_log_ = nullptr;
   HWND agent_start_button_ = nullptr;
   HWND agent_microphone_button_ = nullptr;
+  HWND context_graph_view_ = nullptr;
   HWND activity_shield_ = nullptr;
   HWND stop_strip_ = nullptr;
   HWND emergency_stop_button_ = nullptr;
@@ -130,6 +140,9 @@ private:
 
   cx::ui::AgentWorkspacePolicy workspace_policy_;
   bool agent_panel_visible_ = true;
+  bool context_graph_visible_ = false;
+  cx::ui::ContextGraph context_graph_;
+  int context_graph_hover_ = -1;
 
   Microsoft::WRL::ComPtr<ICoreWebView2Controller> controller_;
   Microsoft::WRL::ComPtr<ICoreWebView2> webview_;

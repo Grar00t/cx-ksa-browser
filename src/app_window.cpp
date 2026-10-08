@@ -14,6 +14,7 @@
 
 #include <WebView2EnvironmentOptions.h>
 #include <commctrl.h>
+#include <windowsx.h>
 
 #include <algorithm>
 #include <string>
@@ -27,6 +28,8 @@ namespace {
 constexpr wchar_t kWindowClass[] = L"CXBuildWindowClass";
 constexpr wchar_t kActivityShieldClass[] =
     L"CXBuildAgentActivityShield";
+constexpr wchar_t kContextGraphClass[] =
+    L"CXBuildContextGraph";
 constexpr wchar_t kWindowTitle[] = L"CX Build";
 
 constexpr WORD kAgentStart = 40001;
@@ -45,6 +48,7 @@ constexpr WORD kHistory = 41008;
 constexpr WORD kBookmarks = 41009;
 constexpr WORD kSettings = 41010;
 constexpr WORD kToggleAgentPanel = 41011;
+constexpr WORD kToggleContextGraph = 41012;
 
 constexpr UINT_PTR kAddressSubclassId = 0x43584144;
 constexpr std::size_t kMaxVisibleTabTitle = 28;
@@ -219,6 +223,18 @@ bool AppWindow::Create(HINSTANCE instance, int) {
     return false;
   }
 
+  WNDCLASSEXW graph_class{};
+  graph_class.cbSize = sizeof(graph_class);
+  graph_class.hInstance = instance;
+  graph_class.lpfnWndProc = &AppWindow::ContextGraphProc;
+  graph_class.lpszClassName = kContextGraphClass;
+  graph_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+  graph_class.hbrBackground = cx::ui::theme::BackgroundBrush();
+  if (!RegisterClassExW(&graph_class) &&
+      GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
+    return false;
+  }
+
   hwnd_ = CreateWindowExW(
       0, kWindowClass, kWindowTitle, WS_OVERLAPPEDWINDOW,
       CW_USEDEFAULT, CW_USEDEFAULT,
@@ -385,6 +401,13 @@ void AppWindow::CreateBrowserControls() {
       68, design::Density::ControlHeight,
       hwnd_, reinterpret_cast<HMENU>(kToggleAgentPanel),
       nullptr, nullptr);
+  graph_toggle_button_ = CreateWindowExW(
+      0, L"BUTTON", L"Graph",
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
+      0, 0,
+      68, design::Density::ControlHeight,
+      hwnd_, reinterpret_cast<HMENU>(kToggleContextGraph),
+      nullptr, nullptr);
 
   status_label_ = CreateWindowExW(
       0, L"STATIC", L"Ready",
@@ -429,6 +452,9 @@ void AppWindow::CreateBrowserControls() {
         close_tab_button_, cx::localization::Text(
             cx::localization::StringId::CloseTab).data());
     AddTooltip(agent_toggle_button_, L"Show or hide the agent workspace");
+    AddTooltip(
+        graph_toggle_button_,
+        L"Show the local browsing context graph");
     AddTooltip(
         agent_microphone_button_,
         L"Voice input is unavailable in this build");
@@ -493,6 +519,12 @@ void AppWindow::CreateAgentWorkspaceControls() {
       0, 0, 56, design::Density::ControlHeight,
       hwnd_, nullptr, nullptr, nullptr);
   EnableWindow(agent_microphone_button_, FALSE);
+
+  context_graph_view_ = CreateWindowExW(
+      0, kContextGraphClass, L"",
+      WS_CHILD | WS_CLIPSIBLINGS,
+      0, 0, 100, 100,
+      hwnd_, nullptr, GetModuleHandleW(nullptr), this);
 
   activity_shield_ = CreateWindowExW(
       WS_EX_LAYERED | WS_EX_NOACTIVATE,
@@ -561,6 +593,15 @@ void AppWindow::HandleCommand(WORD command) {
       return;
     case kToggleAgentPanel:
       agent_panel_visible_ = !agent_panel_visible_;
+      LayoutControls();
+      return;
+    case kToggleContextGraph:
+      context_graph_visible_ = !context_graph_visible_;
+      RefreshContextGraph();
+      if (controller_) {
+        controller_->put_IsVisible(
+            context_graph_visible_ ? FALSE : TRUE);
+      }
       LayoutControls();
       return;
     case kMcpAllowlist:
@@ -662,9 +703,10 @@ void AppWindow::LayoutControls() {
   }
 
   const int agent_button_width = 68;
+  const int graph_button_width = 68;
   const int right_fixed =
       (4 * button_width) + agent_button_width +
-      (4 * gap) + design::Spacing::Lg;
+      graph_button_width + (5 * gap) + design::Spacing::Lg;
   const int requested_address_width = width - x - right_fixed;
   const int address_width = (std::max)(
       requested_address_width,
@@ -683,6 +725,10 @@ void AppWindow::LayoutControls() {
   MoveWindow(
       agent_toggle_button_, x, toolbar_y,
       agent_button_width, control_height, TRUE);
+  x += agent_button_width + gap;
+  MoveWindow(
+      graph_toggle_button_, x, toolbar_y,
+      graph_button_width, control_height, TRUE);
 
   MoveWindow(
       status_label_, design::Spacing::Md, status_y,
@@ -746,6 +792,19 @@ void AppWindow::LayoutControls() {
   if (controller_) {
     RECT bounds{browser_x, content_y, width, content_bottom};
     controller_->put_Bounds(bounds);
+    controller_->put_IsVisible(
+        context_graph_visible_ ? FALSE : TRUE);
+  }
+  if (context_graph_view_) {
+    MoveWindow(
+        context_graph_view_, browser_x, content_y,
+        browser_width, panel_height, TRUE);
+    ShowWindow(
+        context_graph_view_,
+        context_graph_visible_ ? SW_SHOWNOACTIVATE : SW_HIDE);
+    if (context_graph_visible_) {
+      InvalidateRect(context_graph_view_, nullptr, TRUE);
+    }
   }
 
   if (workspace_policy_.shield_visible()) {
@@ -820,6 +879,7 @@ void AppWindow::RefreshAgentWorkspace() {
 void AppWindow::RefreshBrowserChrome() {
   RefreshTabs();
   RefreshAddressBar();
+  RefreshContextGraph();
 
   EnableWindow(
       back_button_, navigation_.CanGoBack() ? TRUE : FALSE);
@@ -1040,6 +1100,248 @@ void AppWindow::OpenLibraryUrl(std::string url) {
     SetBrowserStatus(L"Loading...");
   }
   RefreshBrowserChrome();
+}
+
+void AppWindow::RefreshContextGraph() {
+  std::vector<cx::ui::ContextTabInput> inputs;
+  inputs.reserve(tabs_.tabs().size());
+  for (const auto& tab : tabs_.tabs()) {
+    inputs.push_back(cx::ui::ContextTabInput{
+        tab.id,
+        tab.url,
+        tab.title,
+        tab.id == tabs_.active_tab_id()});
+  }
+  context_graph_ = cx::ui::BuildContextGraph(inputs);
+  context_graph_hover_ = -1;
+  if (context_graph_view_) {
+    InvalidateRect(context_graph_view_, nullptr, TRUE);
+  }
+}
+
+int AppWindow::HitTestContextGraph(POINT point) const {
+  if (!context_graph_view_) return -1;
+  RECT client{};
+  GetClientRect(context_graph_view_, &client);
+  const int width = client.right > client.left
+      ? static_cast<int>(client.right - client.left)
+      : 0;
+  const int plot_top = design::ContextGraphLayout::HeaderHeight;
+  const int plot_height = (std::max)(
+      1,
+      static_cast<int>(client.bottom) - plot_top -
+          design::ContextGraphLayout::FooterHeight);
+  for (std::size_t index = 0;
+       index < context_graph_.nodes.size();
+       ++index) {
+    const auto& node = context_graph_.nodes[index];
+    const int x = static_cast<int>(node.x * width);
+    const int y =
+        plot_top + static_cast<int>(node.y * plot_height);
+    const int radius = node.active
+        ? design::ContextGraphLayout::ActiveNodeRadius + 4
+        : design::ContextGraphLayout::NodeRadius + 4;
+    const int dx = point.x - x;
+    const int dy = point.y - y;
+    if (dx * dx + dy * dy <= radius * radius) {
+      return static_cast<int>(index);
+    }
+  }
+  return -1;
+}
+
+void AppWindow::UpdateContextGraphHover(POINT point) {
+  const int hovered = HitTestContextGraph(point);
+  if (hovered != context_graph_hover_) {
+    context_graph_hover_ = hovered;
+    InvalidateRect(context_graph_view_, nullptr, FALSE);
+  }
+}
+
+void AppWindow::ActivateContextGraphNode(POINT point) {
+  const int hit = HitTestContextGraph(point);
+  if (hit < 0 ||
+      static_cast<std::size_t>(hit) >= context_graph_.nodes.size()) {
+    return;
+  }
+  const auto& node = context_graph_.nodes[static_cast<std::size_t>(hit)];
+  if (node.kind != cx::ui::ContextNodeKind::Tab ||
+      node.tab_id <= 0) {
+    return;
+  }
+  if (navigation_.ActivateTab(node.tab_id)) {
+    RefreshBrowserChrome();
+    SetBrowserStatus(L"Tab selected from local context graph");
+  }
+}
+
+void AppWindow::PaintContextGraph(HDC dc) {
+  RECT client{};
+  GetClientRect(context_graph_view_, &client);
+  FillRect(dc, &client, cx::ui::theme::BackgroundBrush());
+
+  SetBkMode(dc, TRANSPARENT);
+  SetTextColor(dc, design::Color::Text);
+  SelectObject(dc, cx::ui::theme::UiFontSemibold());
+  RECT title{
+      design::Spacing::Xl,
+      design::Spacing::Md,
+      client.right - design::Spacing::Xl,
+      30};
+  DrawTextW(
+      dc, L"Browsing context", -1, &title,
+      DT_LEFT | DT_SINGLELINE | DT_NOPREFIX);
+
+  SelectObject(dc, cx::ui::theme::UiFont());
+  SetTextColor(dc, design::Color::MutedText);
+  RECT subtitle{
+      design::Spacing::Xl,
+      30,
+      client.right - design::Spacing::Xl,
+      design::ContextGraphLayout::HeaderHeight};
+  DrawTextW(
+      dc,
+      L"Open tabs grouped by origin. Paths, queries, and credentials stay hidden.",
+      -1, &subtitle,
+      DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+
+  const int width = client.right > client.left
+      ? static_cast<int>(client.right - client.left)
+      : 0;
+  const int plot_top = design::ContextGraphLayout::HeaderHeight;
+  const int plot_height = (std::max)(
+      1,
+      static_cast<int>(client.bottom) - plot_top -
+          design::ContextGraphLayout::FooterHeight);
+  const auto point_for = [&](const cx::ui::ContextGraphNode& node) {
+    return POINT{
+        static_cast<LONG>(node.x * width),
+        static_cast<LONG>(
+            plot_top + node.y * plot_height)};
+  };
+
+  std::vector<bool> emphasized(context_graph_.nodes.size(), false);
+  if (context_graph_hover_ >= 0 &&
+      static_cast<std::size_t>(context_graph_hover_) <
+          context_graph_.nodes.size()) {
+    emphasized[static_cast<std::size_t>(context_graph_hover_)] = true;
+    for (const auto& edge : context_graph_.edges) {
+      if (edge.first == static_cast<std::size_t>(context_graph_hover_)) {
+        emphasized[edge.second] = true;
+      }
+      if (edge.second == static_cast<std::size_t>(context_graph_hover_)) {
+        emphasized[edge.first] = true;
+      }
+    }
+  }
+
+  for (const auto& edge : context_graph_.edges) {
+    if (edge.first >= context_graph_.nodes.size() ||
+        edge.second >= context_graph_.nodes.size()) {
+      continue;
+    }
+    const bool active_edge =
+        context_graph_.nodes[edge.first].active ||
+        context_graph_.nodes[edge.second].active ||
+        (context_graph_hover_ >= 0 &&
+         (emphasized[edge.first] && emphasized[edge.second]));
+    HPEN pen = CreatePen(
+        PS_SOLID,
+        design::Border::Standard,
+        active_edge
+            ? design::Color::AccentTurquoiseDim
+            : design::Color::Border);
+    const auto old_pen = SelectObject(dc, pen);
+    const POINT first = point_for(context_graph_.nodes[edge.first]);
+    const POINT second = point_for(context_graph_.nodes[edge.second]);
+    MoveToEx(dc, first.x, first.y, nullptr);
+    LineTo(dc, second.x, second.y);
+    SelectObject(dc, old_pen);
+    DeleteObject(pen);
+  }
+
+  for (std::size_t index = 0;
+       index < context_graph_.nodes.size();
+       ++index) {
+    const auto& node = context_graph_.nodes[index];
+    const POINT point = point_for(node);
+    const bool hovered =
+        static_cast<int>(index) == context_graph_hover_;
+    const int radius = node.active
+        ? design::ContextGraphLayout::ActiveNodeRadius
+        : design::ContextGraphLayout::NodeRadius;
+    const COLORREF color = node.active
+        ? design::Color::AgentActive
+        : hovered
+            ? design::Color::AccentTurquoise
+            : node.kind == cx::ui::ContextNodeKind::Origin
+                ? design::Color::MutedText
+                : design::Color::AccentTurquoiseDim;
+    HBRUSH brush = CreateSolidBrush(color);
+    HPEN pen = CreatePen(
+        PS_SOLID, design::Border::Standard, color);
+    const auto old_brush = SelectObject(dc, brush);
+    const auto old_pen = SelectObject(dc, pen);
+    Ellipse(
+        dc,
+        point.x - radius,
+        point.y - radius,
+        point.x + radius,
+        point.y + radius);
+    SelectObject(dc, old_pen);
+    SelectObject(dc, old_brush);
+    DeleteObject(pen);
+    DeleteObject(brush);
+
+    const bool show_label =
+        node.kind == cx::ui::ContextNodeKind::Origin ||
+        node.active || hovered;
+    if (!show_label) continue;
+
+    const std::wstring label = Utf8ToWide(node.label);
+    RECT label_rect{};
+    if (node.kind == cx::ui::ContextNodeKind::Origin) {
+      label_rect = RECT{
+          point.x -
+              design::ContextGraphLayout::LabelWidth -
+              design::Spacing::Md,
+          point.y - 10,
+          point.x - design::Spacing::Md,
+          point.y + 12};
+    } else {
+      label_rect = RECT{
+          point.x + design::Spacing::Md,
+          point.y - 10,
+          (std::min)(
+              client.right - design::Spacing::Md,
+              point.x +
+                  design::ContextGraphLayout::LabelWidth),
+          point.y + 12};
+    }
+    SetTextColor(
+        dc,
+        node.active ? design::Color::Text
+                    : design::Color::MutedText);
+    DrawTextW(
+        dc, label.c_str(), -1, &label_rect,
+        (node.kind == cx::ui::ContextNodeKind::Origin
+             ? DT_RIGHT
+             : DT_LEFT) |
+            DT_SINGLELINE | DT_VCENTER |
+            DT_END_ELLIPSIS | DT_NOPREFIX);
+  }
+
+  SetTextColor(dc, design::Color::MutedText);
+  RECT footer{
+      design::Spacing::Xl,
+      client.bottom - design::ContextGraphLayout::FooterHeight,
+      client.right - design::Spacing::Xl,
+      client.bottom};
+  DrawTextW(
+      dc,
+      L"Hover to isolate neighbors. Click a tab node to activate it.",
+      -1, &footer,
+      DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 }
 
 void AppWindow::InitializeWebView() {
@@ -1302,6 +1604,54 @@ void AppWindow::HandleNewWindow(
   RefreshBrowserChrome();
   navigation_.NavigateAddress(target);
   RefreshBrowserChrome();
+}
+
+LRESULT CALLBACK AppWindow::ContextGraphProc(
+    HWND hwnd, UINT message,
+    WPARAM wparam, LPARAM lparam) {
+  auto* self = reinterpret_cast<AppWindow*>(
+      GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+  if (message == WM_NCCREATE) {
+    const auto* create =
+        reinterpret_cast<CREATESTRUCTW*>(lparam);
+    self = static_cast<AppWindow*>(create->lpCreateParams);
+    SetWindowLongPtrW(
+        hwnd, GWLP_USERDATA,
+        reinterpret_cast<LONG_PTR>(self));
+  }
+
+  if (self && message == WM_PAINT) {
+    PAINTSTRUCT paint{};
+    HDC dc = BeginPaint(hwnd, &paint);
+    self->PaintContextGraph(dc);
+    EndPaint(hwnd, &paint);
+    return 0;
+  }
+  if (self && message == WM_MOUSEMOVE) {
+    self->UpdateContextGraphHover(
+        POINT{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)});
+    TRACKMOUSEEVENT tracking{
+        sizeof(TRACKMOUSEEVENT),
+        TME_LEAVE,
+        hwnd,
+        0};
+    TrackMouseEvent(&tracking);
+    return 0;
+  }
+  if (self && message == WM_MOUSELEAVE) {
+    self->context_graph_hover_ = -1;
+    InvalidateRect(hwnd, nullptr, FALSE);
+    return 0;
+  }
+  if (self && message == WM_LBUTTONUP) {
+    self->ActivateContextGraphNode(
+        POINT{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)});
+    return 0;
+  }
+  if (message == WM_ERASEBKGND) {
+    return TRUE;
+  }
+  return DefWindowProcW(hwnd, message, wparam, lparam);
 }
 
 LRESULT CALLBACK AppWindow::ActivityShieldProc(

@@ -71,6 +71,15 @@ struct Density final {
   static constexpr int SettingsCheckboxHeight = 28;
 };
 
+struct ContextGraphLayout final {
+  static constexpr int HeaderHeight = 62;
+  static constexpr int FooterHeight = 28;
+  static constexpr int NodeRadius = 5;
+  static constexpr int ActiveNodeRadius = 8;
+  static constexpr int LabelWidth = 220;
+  static constexpr int PlotInset = Spacing::Xxl;
+};
+
 struct AgentWorkspaceLayout final {
   static constexpr int PanelWidth = 296;
   static constexpr int MinimumBrowserWidth = 480;
