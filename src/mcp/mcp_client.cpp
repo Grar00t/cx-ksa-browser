@@ -149,6 +149,12 @@ bool McpClient::Start(HWND owner, std::string_view server_id) {
     return false;
   }
 
+  if (!AllowlistManager::VerifyExecutableIdentity(*server)) {
+    logger_.Log(
+        "mcp_server_denied_identity_mismatch", server->id);
+    return false;
+  }
+
   if (!agent_.AuthorizeAction(owner, "mcp.connect")) {
     logger_.Log(
         "mcp_server_denied_permission", server->id);
