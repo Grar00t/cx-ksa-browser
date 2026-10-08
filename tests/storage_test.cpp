@@ -117,10 +117,10 @@ TEST_F(StorageTest, HistoryCrudWorks) {
 }
 
 TEST_F(StorageTest, MigrationsAreIdempotent) {
-  EXPECT_EQ(database_->SchemaVersion(), 3);
+  EXPECT_EQ(database_->SchemaVersion(), 4);
   database_->Close();
   ASSERT_TRUE(database_->Open());
-  EXPECT_EQ(database_->SchemaVersion(), 3);
+  EXPECT_EQ(database_->SchemaVersion(), 4);
 
   ASSERT_TRUE(database_->SetSetting("after-reopen", "ok"));
   EXPECT_EQ(*database_->GetSetting("after-reopen"), "ok");
