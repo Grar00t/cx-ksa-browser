@@ -12,6 +12,8 @@ struct ServerConfig {
   std::string id;
   std::string command;
   std::vector<std::string> args;
+  std::string version;
+  std::string sha256;
 
   bool operator==(const ServerConfig&) const = default;
 };
@@ -37,6 +39,7 @@ public:
   const std::filesystem::path& path() const noexcept;
 
   static bool ValidateServer(const ServerConfig& server);
+  static bool VerifyExecutableIdentity(const ServerConfig& server);
 
 private:
   std::filesystem::path path_;
