@@ -499,7 +499,66 @@ std::optional<bool> Database::GetPermission(
 }
 
 bool Database::RevokeAllPermissions() {
-  return Exec("UPDATE permissions SET granted=0, updated_at=unixepoch();");
+  return Exec("UPDATE permissions SET granted=0, updated_at=unixepoch();") &&
+      Exec("UPDATE scoped_permissions SET granted=0, updated_at=unixepoch();");
+}
+
+bool Database::SetScopedPermission(
+    std::int64_t tab_id,
+    std::string_view origin,
+    std::string_view capability,
+    bool granted) {
+  if (tab_id <= 0 || origin.empty() || capability.empty()) {
+    return false;
+  }
+  Statement statement(db_,
+      "INSERT INTO scoped_permissions("
+      "tab_id, origin, capability, granted) "
+      "VALUES(?1, ?2, ?3, ?4) "
+      "ON CONFLICT(tab_id, origin, capability) DO UPDATE SET "
+      "granted=excluded.granted, updated_at=unixepoch();");
+  if (!statement.ok() ||
+      sqlite3_bind_int64(statement.get(), 1, tab_id) != SQLITE_OK ||
+      !BindText(statement.get(), 2, origin) ||
+      !BindText(statement.get(), 3, capability) ||
+      sqlite3_bind_int(
+          statement.get(), 4, granted ? 1 : 0) != SQLITE_OK) {
+    return false;
+  }
+  return StepDone(statement.get());
+}
+
+std::optional<bool> Database::GetScopedPermission(
+    std::int64_t tab_id,
+    std::string_view origin,
+    std::string_view capability) const {
+  if (tab_id <= 0 || origin.empty() || capability.empty()) {
+    return std::nullopt;
+  }
+  Statement statement(db_,
+      "SELECT granted FROM scoped_permissions "
+      "WHERE tab_id=?1 AND origin=?2 AND capability=?3;");
+  if (!statement.ok() ||
+      sqlite3_bind_int64(statement.get(), 1, tab_id) != SQLITE_OK ||
+      !BindText(statement.get(), 2, origin) ||
+      !BindText(statement.get(), 3, capability)) {
+    return std::nullopt;
+  }
+  if (sqlite3_step(statement.get()) != SQLITE_ROW) {
+    return std::nullopt;
+  }
+  return sqlite3_column_int(statement.get(), 0) != 0;
+}
+
+bool Database::RevokeTabPermissions(std::int64_t tab_id) {
+  if (tab_id <= 0) {
+    return false;
+  }
+  Statement statement(
+      db_, "DELETE FROM scoped_permissions WHERE tab_id=?1;");
+  return statement.ok() &&
+      sqlite3_bind_int64(statement.get(), 1, tab_id) == SQLITE_OK &&
+      StepDone(statement.get());
 }
 
 bool Database::BeginTransaction() {
