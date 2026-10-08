@@ -193,6 +193,11 @@ TEST(ContextGraphTest, CapsTabCountToKeepTheViewQuiet) {
   const auto graph = cx::ui::BuildContextGraph(tabs, 12);
   EXPECT_EQ(graph.edges.size(), 12u);
   EXPECT_EQ(graph.nodes.size(), 13u);
+  const auto active = std::find_if(
+      graph.nodes.begin(), graph.nodes.end(),
+      [](const auto& node) { return node.active; });
+  ASSERT_NE(active, graph.nodes.end());
+  EXPECT_EQ(active->tab_id, 30);
 }
 
 TEST(DesignSystemTest, AgentWorkspaceStaysCompactAndLeavesBrowserUsable) {
