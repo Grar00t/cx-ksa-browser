@@ -22,6 +22,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <thread>
 #include <fstream>
@@ -31,6 +32,30 @@
 #include <vector>
 
 namespace {
+
+
+double RelativeLuminance(COLORREF color) {
+  const auto linear = [](BYTE value) {
+    const double channel =
+        static_cast<double>(value) / 255.0;
+    return channel <= 0.04045
+        ? channel / 12.92
+        : std::pow((channel + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * linear(GetRValue(color)) +
+      0.7152 * linear(GetGValue(color)) +
+      0.0722 * linear(GetBValue(color));
+}
+
+double ContrastRatio(COLORREF first, COLORREF second) {
+  const double first_luminance = RelativeLuminance(first);
+  const double second_luminance = RelativeLuminance(second);
+  const double lighter =
+      std::max(first_luminance, second_luminance);
+  const double darker =
+      std::min(first_luminance, second_luminance);
+  return (lighter + 0.05) / (darker + 0.05);
+}
 
 class UiFakePrompt final : public cx::agent::ConsentPrompt {
 public:
@@ -86,6 +111,43 @@ TEST(DesignSystemTest, TokensRespectNajdiConstraints) {
       SettingsLayout::PageLabelStart + Spacing::Md);
 }
 
+
+
+TEST(DesignSystemTest, SpaceTealTokensAreExactAndStateColorsDistinct) {
+  using namespace cx::ui::design;
+
+  EXPECT_EQ(Color::Background, RGB(11, 16, 32));
+  EXPECT_EQ(Color::Surface, RGB(18, 26, 46));
+  EXPECT_EQ(Color::SurfaceRaised, RGB(26, 37, 64));
+  EXPECT_EQ(Color::Input, RGB(10, 15, 28));
+  EXPECT_EQ(Color::Border, RGB(38, 52, 79));
+  EXPECT_EQ(Color::Text, RGB(232, 241, 255));
+  EXPECT_EQ(Color::MutedText, RGB(159, 176, 204));
+  EXPECT_EQ(Color::AccentTurquoise, RGB(31, 209, 198));
+  EXPECT_EQ(Color::AccentTurquoiseDim, RGB(19, 143, 137));
+  EXPECT_EQ(Color::AgentActive, RGB(125, 227, 255));
+  EXPECT_EQ(Color::Danger, RGB(255, 107, 122));
+  EXPECT_EQ(Border::Focus, 1);
+  EXPECT_NE(Color::AgentActive, Color::Danger);
+  EXPECT_NE(Color::AccentTurquoise, Color::Danger);
+}
+
+TEST(DesignSystemTest, BodyTextMeetsWcagAaAcrossSurfaces) {
+  using namespace cx::ui::design;
+  constexpr std::array<COLORREF, 2> text_colors{{
+      Color::Text, Color::MutedText}};
+  constexpr std::array<COLORREF, 4> surfaces{{
+      Color::Background,
+      Color::Surface,
+      Color::SurfaceRaised,
+      Color::Input}};
+
+  for (const COLORREF text : text_colors) {
+    for (const COLORREF surface : surfaces) {
+      EXPECT_GE(ContrastRatio(text, surface), 4.5);
+    }
+  }
+}
 
 TEST(LocalizationTest, CoreStringsHaveEnglishAndArabicWithEnglishFallback) {
   using cx::localization::Locale;
