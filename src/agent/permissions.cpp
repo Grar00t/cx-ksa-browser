@@ -36,13 +36,19 @@ bool IsValidScope(const PermissionScope& scope) {
       scope.origin.starts_with("http://");
 }
 
-constexpr std::array<ActionRule, 6> kActionRules{{
+constexpr std::array<ActionRule, 12> kActionRules{{
     {"browser.read_page", Capability::ReadPage},
     {"browser.navigate", Capability::Navigate},
     {"tabs.manage", Capability::ManageTabs},
     {"clipboard.write", Capability::ClipboardWrite},
     {"native_messaging.connect", Capability::NativeMessaging},
     {"mcp.connect", Capability::McpConnect},
+    {"form.submit", Capability::Navigate},
+    {"purchase.confirm", Capability::Navigate},
+    {"file.upload", Capability::NativeMessaging},
+    {"file.download", Capability::NativeMessaging},
+    {"credential.fill", Capability::ClipboardWrite},
+    {"browser.navigate_cross_origin", Capability::Navigate},
 }};
 
 }  // namespace
