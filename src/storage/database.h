@@ -77,6 +77,17 @@ public:
   std::optional<bool> GetPermission(std::string_view capability) const;
   bool RevokeAllPermissions();
 
+  bool SetScopedPermission(
+      std::int64_t tab_id,
+      std::string_view origin,
+      std::string_view capability,
+      bool granted);
+  std::optional<bool> GetScopedPermission(
+      std::int64_t tab_id,
+      std::string_view origin,
+      std::string_view capability) const;
+  bool RevokeTabPermissions(std::int64_t tab_id);
+
   bool BeginTransaction();
   bool Commit();
   bool Rollback();
