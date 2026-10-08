@@ -104,9 +104,9 @@ SettingsWindow::SettingsWindow(
           mcp_client_,
           storage::Database::DefaultPath().parent_path()) {}
 
-const std::array<PrivacySettingSpec, 3>&
+const std::array<PrivacySettingSpec, 5>&
 SettingsWindow::PrivacySettings() {
-  static const std::array<PrivacySettingSpec, 3> settings{{
+  static const std::array<PrivacySettingSpec, 5> settings{{
       {
           "privacy.save_history",
           L"Save browsing history locally",
@@ -122,8 +122,26 @@ SettingsWindow::PrivacySettings() {
           L"Clear local browsing history when CX exits",
           true,
       },
+      {
+          "advanced.developer_mode",
+          L"Developer mode: enable DevTools and context-menu extras after restart",
+          false,
+      },
+      {
+          "privacy.microsoft_smartscreen",
+          L"Microsoft SmartScreen after restart (sends reputation queries to Microsoft)",
+          false,
+      },
   }};
   return settings;
+}
+
+bool SettingsWindow::DeveloperModeEnabled() const {
+  return ReadBool("advanced.developer_mode", false);
+}
+
+bool SettingsWindow::SmartScreenEnabled() const {
+  return ReadBool("privacy.microsoft_smartscreen", false);
 }
 
 void SettingsWindow::Show(HWND owner) {
