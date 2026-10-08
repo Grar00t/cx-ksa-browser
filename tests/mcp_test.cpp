@@ -303,6 +303,54 @@ TEST_F(McpTest, DiscardedResponseIsDrainedBeforeNextRequest) {
   EXPECT_EQ(response, second);
 }
 
+TEST_F(McpTest, MalformedJsonRpcIsRejectedBeforeTransportWrite) {
+  ASSERT_TRUE(allowlist_->AddOrUpdate(EchoServer()));
+
+  McpFakePrompt prompt({true, true});
+  cx::agent::PermissionManager permissions(*database_, prompt);
+  cx::agent::AgentCore agent(permissions, *logger_);
+  ASSERT_TRUE(agent.Start(nullptr));
+
+  cx::mcp::RateLimiter limiter(10);
+  cx::mcp::McpClient client(
+      agent, *allowlist_, limiter, *logger_);
+  ASSERT_TRUE(client.Start(nullptr, "echo"));
+
+  std::string response;
+  EXPECT_FALSE(client.SendRequest(
+      "echo",
+      R"({"jsonrpc":"2.0","id":1,"method":"ping","unknown":true})",
+      &response));
+  EXPECT_TRUE(client.IsRunning());
+  EXPECT_NE(
+      ReadLog().find("mcp_request_rejected_invalid_json_rpc"),
+      std::string::npos);
+}
+
+TEST_F(McpTest, AgentKillSwitchStopsActiveMcpTransport) {
+  ASSERT_TRUE(allowlist_->AddOrUpdate(EchoServer()));
+
+  McpFakePrompt prompt({true, true});
+  cx::agent::PermissionManager permissions(*database_, prompt);
+  cx::agent::AgentCore agent(permissions, *logger_);
+  ASSERT_TRUE(agent.Start(nullptr));
+
+  cx::mcp::RateLimiter limiter(10);
+  cx::mcp::McpClient client(
+      agent, *allowlist_, limiter, *logger_);
+  ASSERT_TRUE(client.Start(nullptr, "echo"));
+
+  agent.Stop();
+  EXPECT_FALSE(client.SendRequest(
+      "echo",
+      R"({"jsonrpc":"2.0","id":1,"method":"ping"})",
+      nullptr));
+  EXPECT_FALSE(client.IsRunning());
+  EXPECT_NE(
+      ReadLog().find("mcp_request_rejected_kill_switch"),
+      std::string::npos);
+}
+
 TEST_F(McpTest, ResponseTimeoutInvalidatesTransport) {
   auto server = EchoServer();
   server.args = {"--response-delay-ms", "250"};
@@ -344,7 +392,7 @@ TEST_F(McpTest, WriteTimeoutInvalidatesTransport) {
   const std::string payload(512 * 1024, 'x');
   const std::string request =
       "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"bulk\","
-      "\"payload\":\"" + payload + "\"}";
+      "\"params\":{\"payload\":\"" + payload + "\"}}";
 
   const auto started = std::chrono::steady_clock::now();
   std::string response;
@@ -428,6 +476,8 @@ TEST(RateLimiterTest, LimitIsPerServerAndWindowResets) {
   }
   EXPECT_FALSE(limiter.AllowAt("one", now));
   EXPECT_TRUE(limiter.AllowAt("two", now));
+  EXPECT_TRUE(limiter.AllowAt("one", "other-tool", 1, now));
+  EXPECT_TRUE(limiter.AllowAt("one", "ping", 2, now));
 
   EXPECT_TRUE(limiter.AllowAt(
       "one", now + std::chrono::milliseconds(1001)));
