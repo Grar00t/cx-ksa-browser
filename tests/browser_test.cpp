@@ -442,6 +442,37 @@ TEST(NavigationAddressTest, NormalizesHostsAndRejectsUnsafeSchemes) {
   ASSERT_TRUE(secure.has_value());
   EXPECT_EQ(*secure, "https://example.com");
 
+  const auto search =
+      cx::browser::NavigationController::NormalizeAddress(
+          L"privacy browser");
+  ASSERT_TRUE(search.has_value());
+  EXPECT_EQ(*search, "https://duckduckgo.com/?q=privacy+browser");
+
+  const auto google =
+      cx::browser::NavigationController::NormalizeAddress(
+          L"!g browser security");
+  ASSERT_TRUE(google.has_value());
+  EXPECT_EQ(
+      *google,
+      "https://www.google.com/search?q=browser+security");
+
+  const auto bing =
+      cx::browser::NavigationController::NormalizeAddress(
+          L"!b Arabic search");
+  ASSERT_TRUE(bing.has_value());
+  EXPECT_EQ(
+      *bing,
+      "https://www.bing.com/search?q=Arabic+search");
+
+  const auto arabic =
+      cx::browser::NavigationController::NormalizeAddress(
+          L"\u0628\u062d\u062b \u0639\u0631\u0628\u064a");
+  ASSERT_TRUE(arabic.has_value());
+  EXPECT_EQ(
+      *arabic,
+      "https://duckduckgo.com/?q=%D8%A8%D8%AD%D8%AB+"
+      "%D8%B9%D8%B1%D8%A8%D9%8A");
+
   EXPECT_TRUE(
       cx::browser::NavigationController::IsAllowedUrl(
           L"file:///C:/Users/A/report.txt"));
