@@ -262,6 +262,84 @@ TEST_F(AgentTest, RevokeSingleCapabilityPersistsDenied) {
       cx::agent::Capability::Navigate));
 }
 
+TEST_F(AgentTest, ScopedGrantsAreBoundToTabAndOrigin) {
+  FakePrompt prompt({true, true, true});
+  cx::agent::PermissionManager permissions(*database_, prompt);
+  auto logger = OpenLogger();
+  cx::agent::AgentCore agent(permissions, *logger);
+  ASSERT_TRUE(agent.Start(nullptr));
+
+  const cx::agent::PermissionScope first{
+      11, "https://one.test"};
+  const cx::agent::PermissionScope second{
+      12, "https://one.test"};
+
+  EXPECT_TRUE(agent.AuthorizeScopedAction(
+      nullptr, "browser.navigate", first, false));
+  EXPECT_TRUE(agent.AuthorizeScopedAction(
+      nullptr, "browser.navigate", first, false));
+  EXPECT_EQ(prompt.count(), 2u);
+
+  EXPECT_TRUE(agent.AuthorizeScopedAction(
+      nullptr, "browser.navigate", second, false));
+  EXPECT_EQ(prompt.count(), 3u);
+  EXPECT_FALSE(permissions.IsGrantedScoped(
+      cx::agent::Capability::Navigate,
+      {11, "https://two.test"}));
+
+  EXPECT_TRUE(permissions.RevokeTab(11));
+  EXPECT_FALSE(permissions.IsGrantedScoped(
+      cx::agent::Capability::Navigate, first));
+  EXPECT_TRUE(permissions.IsGrantedScoped(
+      cx::agent::Capability::Navigate, second));
+}
+
+TEST_F(AgentTest, SensitiveAndCredentialActionsFailClosed) {
+  FakePrompt prompt({true, true});
+  cx::agent::PermissionManager permissions(*database_, prompt);
+  auto logger = OpenLogger();
+  cx::agent::AgentCore agent(permissions, *logger);
+  ASSERT_TRUE(agent.Start(nullptr));
+  const cx::agent::PermissionScope scope{
+      7, "https://shop.test"};
+
+  EXPECT_FALSE(agent.AuthorizeScopedAction(
+      nullptr, "purchase.confirm", scope, false));
+  EXPECT_TRUE(agent.AuthorizeScopedAction(
+      nullptr, "purchase.confirm", scope, true));
+  EXPECT_FALSE(agent.AuthorizeScopedAction(
+      nullptr, "credential.fill", scope, true));
+}
+
+TEST_F(AgentTest, AuditLogIsHashChainedRedactedAndTamperEvident) {
+  const auto path = root_ / "logs" / "audit.log";
+  {
+    cx::agent::LocalLogger logger(path);
+    ASSERT_TRUE(logger.Open());
+    ASSERT_TRUE(logger.Log(
+        "tool_call", "authorization=Bearer secret-token"));
+    ASSERT_TRUE(logger.Log("tool_result", "ok"));
+  }
+
+  EXPECT_TRUE(cx::agent::LocalLogger::VerifyFile(path));
+  std::ifstream input(path, std::ios::binary);
+  std::string contents{
+      std::istreambuf_iterator<char>(input),
+      std::istreambuf_iterator<char>()};
+  EXPECT_EQ(contents.find("Bearer"), std::string::npos);
+  EXPECT_EQ(contents.find("secret-token"), std::string::npos);
+  EXPECT_NE(contents.find("[REDACTED]"), std::string::npos);
+
+  ASSERT_FALSE(contents.empty());
+  contents[0] = contents[0] == '0' ? '1' : '0';
+  {
+    std::ofstream output(
+        path, std::ios::binary | std::ios::trunc);
+    output << contents;
+  }
+  EXPECT_FALSE(cx::agent::LocalLogger::VerifyFile(path));
+}
+
 TEST(AgentDefaultLogPath, UsesAppDataCxBuildLogs) {
   wchar_t* appdata = nullptr;
   std::size_t length = 0;
