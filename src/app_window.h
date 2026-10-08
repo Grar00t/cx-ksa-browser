@@ -62,8 +62,8 @@ private:
       HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
 
   bool Create(HINSTANCE instance, int show_command);
-  void CreateMenus();
   void CreateBrowserControls();
+  void ShowToolsMenu();
   void CreateAgentWorkspaceControls();
   void HandleCommand(WORD command);
   void HandleNotify(const NMHDR* header);
@@ -121,6 +121,7 @@ private:
   HWND bookmark_button_ = nullptr;
   HWND new_tab_button_ = nullptr;
   HWND close_tab_button_ = nullptr;
+  HWND more_button_ = nullptr;
   HWND agent_toggle_button_ = nullptr;
   HWND graph_toggle_button_ = nullptr;
   HWND status_label_ = nullptr;
@@ -139,7 +140,7 @@ private:
   HWND tooltip_ = nullptr;
 
   cx::ui::AgentWorkspacePolicy workspace_policy_;
-  bool agent_panel_visible_ = true;
+  bool agent_panel_visible_ = false;
   bool context_graph_visible_ = false;
   cx::ui::ContextGraph context_graph_;
   int context_graph_hover_ = -1;
