@@ -146,7 +146,11 @@ TEST_F(McpTest, MissingAllowlistStartsEmptyAndPersists) {
   ASSERT_TRUE(reloaded.Load());
   const auto stored = reloaded.Find("echo");
   ASSERT_TRUE(stored.has_value());
-  EXPECT_EQ(*stored, server);
+  EXPECT_EQ(stored->id, server.id);
+  EXPECT_EQ(stored->command, server.command);
+  EXPECT_EQ(stored->args, server.args);
+  EXPECT_TRUE(
+      cx::mcp::AllowlistManager::VerifyExecutableIdentity(*stored));
 }
 
 TEST_F(McpTest, NetworkAndNonFixedExecutablePathsAreRejected) {
@@ -175,7 +179,7 @@ TEST_F(McpTest, Utf8BomConfigLoads) {
   {
     std::ofstream output(path, std::ios::binary);
     output << "\xEF\xBB\xBF"
-           << "{\"version\":1,\"servers\":[]}";
+           << "{\"version\":2,\"servers\":[]}";
   }
 
   cx::mcp::AllowlistManager manager(path);
@@ -187,12 +191,46 @@ TEST_F(McpTest, InvalidJsonFailsClosed) {
   const auto path = root_ / "config" / "invalid.json";
   {
     std::ofstream output(path);
-    output << "{\"version\":1,\"servers\":[";
+    output << "{\"version\":2,\"servers\":[";
   }
 
   cx::mcp::AllowlistManager invalid(path);
   EXPECT_FALSE(invalid.Load());
   EXPECT_TRUE(invalid.List().empty());
+}
+
+TEST_F(McpTest, ExecutableIdentityMismatchIsRejectedBeforeConsent) {
+  const auto copied_server = root_ / "pinned-server.exe";
+  std::filesystem::copy_file(TestServerPath(), copied_server);
+
+  auto server = EchoServer("pinned");
+  server.command = WideToUtf8(copied_server.wstring());
+  ASSERT_TRUE(allowlist_->AddOrUpdate(server));
+  const auto pinned = allowlist_->Find("pinned");
+  ASSERT_TRUE(pinned.has_value());
+  ASSERT_TRUE(
+      cx::mcp::AllowlistManager::VerifyExecutableIdentity(*pinned));
+
+  {
+    std::ofstream output(
+        copied_server, std::ios::binary | std::ios::app);
+    output << "tampered";
+  }
+
+  McpFakePrompt prompt({true, true});
+  cx::agent::PermissionManager permissions(*database_, prompt);
+  cx::agent::AgentCore agent(permissions, *logger_);
+  ASSERT_TRUE(agent.Start(nullptr));
+  ASSERT_EQ(prompt.count(), 1u);
+
+  cx::mcp::RateLimiter limiter(10);
+  cx::mcp::McpClient client(
+      agent, *allowlist_, limiter, *logger_);
+  EXPECT_FALSE(client.Start(nullptr, "pinned"));
+  EXPECT_EQ(prompt.count(), 1u);
+  EXPECT_NE(
+      ReadLog().find("mcp_server_denied_identity_mismatch"),
+      std::string::npos);
 }
 
 TEST_F(McpTest, ServerOutsideAllowlistIsRejectedBeforeMcpConsent) {
@@ -584,14 +622,14 @@ TEST_F(McpTest, AllowlistUpdateSortFindAndRemoveAreDeterministic) {
 
 TEST_F(McpTest, MalformedAllowlistVariantsFailClosed) {
   const std::vector<std::string> invalid_json = {
-      R"({"version":2,"servers":[]})",
+      R"({"version":3,"servers":[]})",
       R"({"version":1})",
       R"({"servers":[]})",
       R"({"version":1,"servers":[],"extra":1})",
       R"({"version":1,"servers":[{"id":"x","command":"C:\\x.exe"}]})",
       R"({"version":1,"servers":[{"id":"x","command":"C:\\x.exe","args":[]},{"id":"x","command":"C:\\x.exe","args":[]}]})",
       R"({"version":1,"servers":[{"id":"bad id","command":"C:\\x.exe","args":[]}]})",
-      "{\"version\":1,\"servers\":[],}"
+      "{\"version\":2,\"servers\":[],}"
   };
 
   for (std::size_t i = 0;
