@@ -26,6 +26,12 @@ TEST(JsonRpcValidatorTest, RejectsMalformedAndUnknownFields) {
   EXPECT_FALSE(cx::mcp::JsonRpcValidator::ValidateRequest(
       R"({"jsonrpc":"2.0","id":null,"method":"ping"})",
       &method));
+  EXPECT_FALSE(cx::mcp::JsonRpcValidator::ValidateRequest(
+      R"({"jsonrpc":"2.0","id":-true,"method":"ping"})",
+      &method));
+  EXPECT_FALSE(cx::mcp::JsonRpcValidator::ValidateRequest(
+      R"({"jsonrpc":"2.0","id":1,"method":"ping","params":true})",
+      &method));
 }
 
 TEST(JsonRpcValidatorTest, RejectsExcessiveNesting) {
