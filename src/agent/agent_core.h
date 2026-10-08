@@ -28,7 +28,7 @@ private:
   std::filesystem::path path_;
   std::ofstream stream_;
   mutable std::mutex mutex_;
-  std::string previous_hash_(64, '0');
+  std::string previous_hash_ = std::string(64, '0');
 };
 
 enum class AgentState {
