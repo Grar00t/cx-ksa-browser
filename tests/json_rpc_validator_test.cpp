@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <vector>
+
 TEST(JsonRpcValidatorTest, AcceptsStrictRequestShapes) {
   std::string method;
   EXPECT_TRUE(cx::mcp::JsonRpcValidator::ValidateRequest(
