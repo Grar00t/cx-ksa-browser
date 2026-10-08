@@ -200,6 +200,37 @@ TEST(ContextGraphTest, CapsTabCountToKeepTheViewQuiet) {
   EXPECT_EQ(active->tab_id, 30);
 }
 
+TEST(DesignSystemTest, BrowserShellKeepsTheWebViewPrimary) {
+  using namespace cx::ui::design;
+
+  const auto clean =
+      ComputeBrowserShellLayout(1280, 800, false, false, false);
+  EXPECT_EQ(clean.agent.Width(), 0);
+  EXPECT_EQ(clean.graph.Width(), 0);
+  EXPECT_EQ(clean.browser.left, 0);
+  EXPECT_EQ(clean.browser.right, 1280);
+  EXPECT_EQ(clean.status.bottom, 800);
+  EXPECT_GT(clean.browser.Height(), 680);
+
+  const auto drawers =
+      ComputeBrowserShellLayout(1600, 900, true, true, false);
+  EXPECT_GT(drawers.agent.Width(), 0);
+  EXPECT_GT(drawers.graph.Width(), 0);
+  EXPECT_GE(
+      drawers.browser.Width(),
+      AgentWorkspaceLayout::MinimumBrowserWidth);
+  EXPECT_LE(drawers.agent.right, drawers.browser.left);
+  EXPECT_LE(drawers.browser.right, drawers.graph.left);
+
+  const auto narrow =
+      ComputeBrowserShellLayout(640, 600, true, true, true);
+  EXPECT_GE(
+      narrow.browser.Width(),
+      AgentWorkspaceLayout::MinimumBrowserWidth);
+  EXPECT_EQ(narrow.stop.bottom, narrow.status.top);
+  EXPECT_GT(narrow.stop.Height(), 0);
+}
+
 TEST(DesignSystemTest, AgentWorkspaceStaysCompactAndLeavesBrowserUsable) {
   using namespace cx::ui::design;
   EXPECT_LE(AgentWorkspaceLayout::PanelWidth, 320);

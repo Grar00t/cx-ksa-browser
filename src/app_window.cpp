@@ -17,6 +17,7 @@
 #include <windowsx.h>
 
 #include <algorithm>
+#include <cwchar>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -49,6 +50,7 @@ constexpr WORD kBookmarks = 41009;
 constexpr WORD kSettings = 41010;
 constexpr WORD kToggleAgentPanel = 41011;
 constexpr WORD kToggleContextGraph = 41012;
+constexpr WORD kMoreMenu = 41013;
 
 constexpr UINT_PTR kAddressSubclassId = 0x43584144;
 constexpr std::size_t kMaxVisibleTabTitle = 28;
@@ -133,6 +135,63 @@ std::wstring Utf8ToWide(std::string_view value) {
   }
   return output;
 }
+
+std::wstring CssColor(COLORREF color) {
+  wchar_t value[8]{};
+  swprintf_s(
+      value, L"#%02X%02X%02X",
+      GetRValue(color), GetGValue(color), GetBValue(color));
+  return value;
+}
+
+std::wstring LocalNewTabHtml() {
+  const std::wstring background =
+      CssColor(design::Color::Background);
+  const std::wstring surface =
+      CssColor(design::Color::Surface);
+  const std::wstring input =
+      CssColor(design::Color::Input);
+  const std::wstring border =
+      CssColor(design::Color::Border);
+  const std::wstring text =
+      CssColor(design::Color::Text);
+  const std::wstring muted =
+      CssColor(design::Color::MutedText);
+  const std::wstring accent =
+      CssColor(design::Color::AccentTurquoise);
+
+  return
+      LR"(<!doctype html><html lang="en" dir="ltr"><head>)"
+      LR"(<meta charset="utf-8"><meta name="color-scheme" content="dark">)"
+      LR"(<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; form-action https://duckduckgo.com">)"
+      L"<style>*{box-sizing:border-box}html,body{height:100%;margin:0}"
+      L"body{display:grid;place-items:center;background:" + background +
+      L";color:" + text +
+      LR"(;font:15px "Segoe UI",Tahoma,sans-serif;letter-spacing:0})"
+      L"main{width:min(680px,calc(100% - 48px));padding:32px 0}"
+      L"h1{font-size:44px;font-weight:600;margin:0 0 8px}"
+      L"h1 span{color:" + accent + L"}"
+      L"p{color:" + muted + L";margin:0 0 24px}"
+      L"form{display:flex;background:" + input +
+      L";border:1px solid " + border + L";border-radius:4px;padding:6px}"
+      L"input{flex:1;min-width:0;border:0;outline:0;background:transparent;"
+      L"color:" + text + L";font:16px \"Segoe UI\",Tahoma,sans-serif;padding:10px 12px}"
+      L"button{border:0;border-radius:3px;background:" + accent +
+      L";color:" + background + L";font-weight:600;padding:0 18px;cursor:pointer}"
+      L"nav{display:flex;gap:18px;margin-top:18px}"
+      L"a{color:" + muted + L";text-decoration:none}"
+      L"a:hover{color:" + text + L"}"
+      LR"(</style></head><body><main><h1>CX<span>.</span></h1>)"
+      LR"(<p>New tab · علامة تبويب جديدة</p>)"
+      LR"(<form action="https://duckduckgo.com/" method="get">)"
+      LR"(<input name="q" type="search" autocomplete="off" autofocus placeholder="Search the web or enter an address">)"
+      LR"(<button type="submit">Search</button></form>)"
+      LR"(<nav><a href="https://duckduckgo.com/">DuckDuckGo</a>)"
+      LR"(<a href="https://www.google.com/">Google</a>)"
+      LR"(<a href="https://www.bing.com/">Bing</a></nav>)"
+      LR"(</main></body></html>)";
+}
+
 }  // namespace
 
 AppWindow::AppWindow(
@@ -192,7 +251,7 @@ int AppWindow::Run(HINSTANCE instance, int show_command) {
   return static_cast<int>(message.wParam);
 }
 
-bool AppWindow::Create(HINSTANCE instance, int) {
+bool AppWindow::Create(HINSTANCE instance, int show_command) {
   INITCOMMONCONTROLSEX controls{};
   controls.dwSize = sizeof(controls);
   controls.dwICC = ICC_TAB_CLASSES | ICC_WIN95_CLASSES;
@@ -243,80 +302,45 @@ bool AppWindow::Create(HINSTANCE instance, int) {
   if (!hwnd_) return false;
 
   cx::ui::theme::ApplyWindowChrome(hwnd_);
-  CreateMenus();
   CreateBrowserControls();
   RefreshBrowserChrome();
 
-  ShowWindow(hwnd_, SW_SHOWNORMAL);
-  SetWindowPos(
-      hwnd_, nullptr, 0, 0,
-      design::Window::AppWidth, design::Window::AppHeight,
-      SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+  const int initial_show =
+      show_command == SW_HIDE ? SW_SHOWNORMAL : show_command;
+  ShowWindow(hwnd_, initial_show);
   UpdateWindow(hwnd_);
   InitializeWebView();
   return true;
 }
 
-void AppWindow::CreateMenus() {
-  HMENU menu_bar = CreateMenu();
-  HMENU browser_menu = CreatePopupMenu();
-  HMENU agent_menu = CreatePopupMenu();
-  HMENU mcp_menu = CreatePopupMenu();
-  if (!menu_bar || !browser_menu || !agent_menu || !mcp_menu) {
-    if (browser_menu) DestroyMenu(browser_menu);
-    if (agent_menu) DestroyMenu(agent_menu);
-    if (mcp_menu) DestroyMenu(mcp_menu);
-    if (menu_bar) DestroyMenu(menu_bar);
+void AppWindow::ShowToolsMenu() {
+  HMENU menu = CreatePopupMenu();
+  if (!menu) {
     return;
   }
 
-  AppendMenuW(
-      browser_menu, MF_STRING, kNewTab,
-      cx::localization::Text(
-          cx::localization::StringId::NewTab).data());
-  AppendMenuW(
-      browser_menu, MF_STRING, kCloseTab,
-      cx::localization::Text(
-          cx::localization::StringId::CloseTab).data());
-  AppendMenuW(browser_menu, MF_SEPARATOR, 0, nullptr);
-  AppendMenuW(browser_menu, MF_STRING, kHistory, L"History...");
-  AppendMenuW(browser_menu, MF_STRING, kBookmarks, L"Bookmarks...");
-  AppendMenuW(browser_menu, MF_SEPARATOR, 0, nullptr);
-  std::wstring settings_text(
-      cx::localization::Text(
-          cx::localization::StringId::SettingsAndPrivacy));
-  settings_text += L"...";
-  AppendMenuW(
-      browser_menu, MF_STRING, kSettings,
-      settings_text.c_str());
-  AppendMenuW(
-      menu_bar, MF_POPUP,
-      reinterpret_cast<UINT_PTR>(browser_menu),
-      cx::localization::Text(
-          cx::localization::StringId::Browser).data());
+  AppendMenuW(menu, MF_STRING, kHistory, L"History");
+  AppendMenuW(menu, MF_STRING, kBookmarks, L"Bookmarks");
+  AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+  AppendMenuW(menu, MF_STRING, kSettings, L"Settings & Privacy");
+  AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+  AppendMenuW(menu, MF_STRING, kAgentStart, L"Start Agent");
+  AppendMenuW(menu, MF_STRING, kAgentStop, L"Stop Agent");
+  AppendMenuW(menu, MF_STRING, kAgentRevokeAll, L"Revoke Agent Permissions");
+  AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+  AppendMenuW(menu, MF_STRING, kMcpAllowlist, L"MCP Servers");
 
-  AppendMenuW(agent_menu, MF_STRING, kAgentStart, L"Start Agent...");
-  AppendMenuW(agent_menu, MF_STRING, kAgentStop, L"Stop Agent");
-  AppendMenuW(agent_menu, MF_SEPARATOR, 0, nullptr);
-  AppendMenuW(
-      agent_menu, MF_STRING, kAgentRevokeAll,
-      L"Revoke All Permissions...");
-  AppendMenuW(
-      menu_bar, MF_POPUP,
-      reinterpret_cast<UINT_PTR>(agent_menu),
-      cx::localization::Text(
-          cx::localization::StringId::Agent).data());
-
-  AppendMenuW(
-      mcp_menu, MF_STRING, kMcpAllowlist,
-      L"Allowed Servers...");
-  AppendMenuW(
-      menu_bar, MF_POPUP,
-      reinterpret_cast<UINT_PTR>(mcp_menu),
-      cx::localization::Text(
-          cx::localization::StringId::Mcp).data());
-
-  SetMenu(hwnd_, menu_bar);
+  RECT anchor{};
+  GetWindowRect(more_button_, &anchor);
+  const UINT selected = TrackPopupMenu(
+      menu,
+      TPM_RETURNCMD | TPM_RIGHTALIGN | TPM_TOPALIGN |
+          TPM_NONOTIFY,
+      anchor.right, anchor.bottom, 0, hwnd_, nullptr);
+  DestroyMenu(menu);
+  if (selected != 0 && selected != kMoreMenu) {
+    HandleCommand(static_cast<WORD>(selected));
+  }
 }
 
 void AppWindow::CreateBrowserControls() {
@@ -394,6 +418,13 @@ void AppWindow::CreateBrowserControls() {
       design::Density::IconButtonWidth,
       design::Density::ControlHeight,
       hwnd_, reinterpret_cast<HMENU>(kCloseTab), nullptr, nullptr);
+  more_button_ = CreateWindowExW(
+      0, L"BUTTON", L"\x22EF",
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
+      0, 0,
+      design::Density::IconButtonWidth,
+      design::Density::ControlHeight,
+      hwnd_, reinterpret_cast<HMENU>(kMoreMenu), nullptr, nullptr);
   agent_toggle_button_ = CreateWindowExW(
       0, L"BUTTON", L"Agent",
       WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
@@ -445,6 +476,7 @@ void AppWindow::CreateBrowserControls() {
     AddTooltip(
         bookmark_button_, cx::localization::Text(
             cx::localization::StringId::SaveBookmarkLocally).data());
+    AddTooltip(more_button_, L"History, bookmarks, settings, and tools");
     AddTooltip(
         new_tab_button_, cx::localization::Text(
             cx::localization::StringId::NewTab).data());
@@ -595,13 +627,12 @@ void AppWindow::HandleCommand(WORD command) {
       agent_panel_visible_ = !agent_panel_visible_;
       LayoutControls();
       return;
+    case kMoreMenu:
+      ShowToolsMenu();
+      return;
     case kToggleContextGraph:
       context_graph_visible_ = !context_graph_visible_;
       RefreshContextGraph();
-      if (controller_) {
-        controller_->put_IsVisible(
-            context_graph_visible_ ? FALSE : TRUE);
-      }
       LayoutControls();
       return;
     case kMcpAllowlist:
@@ -684,15 +715,11 @@ void AppWindow::LayoutControls() {
   const int control_height = design::Density::ControlHeight;
   const int gap = design::Spacing::Sm;
   const int button_width = design::Density::IconButtonWidth;
-  const int status_y =
-      toolbar_y + control_height + design::Spacing::Xxs;
-  const int content_y =
-      status_y + design::Density::StatusHeight +
-      design::Spacing::Xxs;
-  const int stop_height = workspace_policy_.emergency_stop_visible()
-      ? design::AgentWorkspaceLayout::StopStripHeight
-      : 0;
-  const int content_bottom = (std::max)(content_y, height - stop_height);
+  const auto shell = design::ComputeBrowserShellLayout(
+      width, height,
+      agent_panel_visible_,
+      context_graph_visible_,
+      workspace_policy_.emergency_stop_visible());
 
   MoveWindow(tab_strip_, 0, 0, width, tab_height, TRUE);
 
@@ -705,11 +732,10 @@ void AppWindow::LayoutControls() {
   const int agent_button_width = 68;
   const int graph_button_width = 68;
   const int right_fixed =
-      (4 * button_width) + agent_button_width +
-      graph_button_width + (5 * gap) + design::Spacing::Lg;
-  const int requested_address_width = width - x - right_fixed;
+      (5 * button_width) + agent_button_width +
+      graph_button_width + (6 * gap) + design::Spacing::Lg;
   const int address_width = (std::max)(
-      requested_address_width,
+      width - x - right_fixed,
       design::Density::MinimumInputWidth);
   MoveWindow(
       address_bar_, x, toolbar_y,
@@ -718,7 +744,7 @@ void AppWindow::LayoutControls() {
 
   for (HWND button : {
            go_button_, bookmark_button_,
-           new_tab_button_, close_tab_button_}) {
+           new_tab_button_, close_tab_button_, more_button_}) {
     MoveWindow(button, x, toolbar_y, button_width, control_height, TRUE);
     x += button_width + gap;
   }
@@ -731,22 +757,14 @@ void AppWindow::LayoutControls() {
       graph_button_width, control_height, TRUE);
 
   MoveWindow(
-      status_label_, design::Spacing::Md, status_y,
-      (std::max)(0, width - 2 * design::Spacing::Md),
-      design::Density::StatusHeight, TRUE);
+      status_label_,
+      shell.status.left + design::Spacing::Md,
+      shell.status.top,
+      (std::max)(0, shell.status.Width() - 2 * design::Spacing::Md),
+      shell.status.Height(), TRUE);
 
-  const int panel_width = agent_panel_visible_
-      ? (std::min)(
-            design::AgentWorkspaceLayout::PanelWidth,
-            (std::max)(0, width -
-                design::AgentWorkspaceLayout::MinimumBrowserWidth))
-      : 0;
-  const int panel_height = (std::max)(0, content_bottom - content_y);
-  const int browser_x = panel_width > 0
-      ? panel_width + design::Spacing::Sm
-      : 0;
-  const int browser_width = (std::max)(0, width - browser_x);
-
+  const int panel_width = shell.agent.Width();
+  const int panel_height = shell.agent.Height();
   for (HWND control : {
            agent_panel_, agent_title_, agent_status_, agent_scope_,
            agent_log_, agent_start_button_, agent_microphone_button_}) {
@@ -757,8 +775,10 @@ void AppWindow::LayoutControls() {
   if (panel_width > 0) {
     const int inset = design::AgentWorkspaceLayout::PanelInset;
     const int inner_width = (std::max)(0, panel_width - 2 * inset);
-    MoveWindow(agent_panel_, 0, content_y, panel_width, panel_height, TRUE);
-    int panel_y = content_y + inset;
+    MoveWindow(
+        agent_panel_, shell.agent.left, shell.agent.top,
+        panel_width, panel_height, TRUE);
+    int panel_y = shell.agent.top + inset;
     MoveWindow(
         agent_title_, inset, panel_y, inner_width,
         design::AgentWorkspaceLayout::HeaderHeight, TRUE);
@@ -772,7 +792,7 @@ void AppWindow::LayoutControls() {
         design::Density::StatusHeight, TRUE);
     panel_y += design::Density::StatusHeight + design::Spacing::Md;
     const int action_y =
-        content_bottom - inset - design::Density::ControlHeight;
+        shell.agent.bottom - inset - design::Density::ControlHeight;
     const int log_height = (std::max)(
         design::AgentWorkspaceLayout::LogMinimumHeight,
         action_y - panel_y - design::Spacing::Md);
@@ -790,52 +810,61 @@ void AppWindow::LayoutControls() {
   }
 
   if (controller_) {
-    RECT bounds{browser_x, content_y, width, content_bottom};
+    RECT bounds{
+        shell.browser.left, shell.browser.top,
+        shell.browser.right, shell.browser.bottom};
     controller_->put_Bounds(bounds);
-    controller_->put_IsVisible(
-        context_graph_visible_ ? FALSE : TRUE);
+    controller_->put_IsVisible(TRUE);
   }
   if (context_graph_view_) {
     MoveWindow(
-        context_graph_view_, browser_x, content_y,
-        browser_width, panel_height, TRUE);
+        context_graph_view_,
+        shell.graph.left, shell.graph.top,
+        shell.graph.Width(), shell.graph.Height(), TRUE);
     ShowWindow(
         context_graph_view_,
-        context_graph_visible_ ? SW_SHOWNOACTIVATE : SW_HIDE);
-    if (context_graph_visible_) {
+        shell.graph.Width() > 0 ? SW_SHOWNOACTIVATE : SW_HIDE);
+    if (shell.graph.Width() > 0) {
       InvalidateRect(context_graph_view_, nullptr, TRUE);
     }
   }
 
   if (workspace_policy_.shield_visible()) {
-    MoveWindow(activity_shield_, 0, 0, width, content_bottom, TRUE);
+    MoveWindow(
+        activity_shield_, 0, 0,
+        width, shell.stop.top, TRUE);
     ShowWindow(activity_shield_, SW_SHOWNOACTIVATE);
     SetWindowPos(
-        activity_shield_, HWND_TOP, 0, 0, width, content_bottom,
+        activity_shield_, HWND_TOP, 0, 0,
+        width, shell.stop.top,
         SWP_NOACTIVATE | SWP_SHOWWINDOW);
   } else {
     ShowWindow(activity_shield_, SW_HIDE);
   }
 
   if (workspace_policy_.emergency_stop_visible()) {
-    const int strip_y = content_bottom;
-    MoveWindow(stop_strip_, 0, strip_y, width, stop_height, TRUE);
     const int stop_width = 132;
-    const int stop_x =
-        (std::max)(design::Spacing::Md, width - stop_width -
-            design::Spacing::Md);
+    const int stop_x = (std::max)(
+        design::Spacing::Md,
+        width - stop_width - design::Spacing::Md);
+    MoveWindow(
+        stop_strip_,
+        shell.stop.left, shell.stop.top,
+        shell.stop.Width(), shell.stop.Height(), TRUE);
     MoveWindow(
         emergency_stop_button_, stop_x,
-        strip_y + design::Spacing::Md,
+        shell.stop.top + design::Spacing::Md,
         stop_width, design::Density::ControlHeight, TRUE);
     ShowWindow(stop_strip_, SW_SHOWNOACTIVATE);
     ShowWindow(emergency_stop_button_, SW_SHOWNOACTIVATE);
     SetWindowPos(
-        stop_strip_, HWND_TOP, 0, strip_y, width, stop_height,
+        stop_strip_, HWND_TOP,
+        shell.stop.left, shell.stop.top,
+        shell.stop.Width(), shell.stop.Height(),
         SWP_NOACTIVATE | SWP_SHOWWINDOW);
     SetWindowPos(
         emergency_stop_button_, HWND_TOP, stop_x,
-        strip_y + design::Spacing::Md,
+        shell.stop.top + design::Spacing::Md,
         stop_width, design::Density::ControlHeight,
         SWP_NOACTIVATE | SWP_SHOWWINDOW);
   } else {
@@ -1474,6 +1503,10 @@ bool AppWindow::NavigateTo(std::wstring_view url) {
   if (!webview_ ||
       !cx::browser::NavigationController::IsAllowedUrl(url)) {
     return false;
+  }
+  if (url == L"about:blank") {
+    const std::wstring html = LocalNewTabHtml();
+    return SUCCEEDED(webview_->NavigateToString(html.c_str()));
   }
   const std::wstring owned(url);
   return SUCCEEDED(webview_->Navigate(owned.c_str()));
