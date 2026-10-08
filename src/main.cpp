@@ -1,5 +1,6 @@
 #include "agent/agent_core.h"
 #include "agent/permissions.h"
+#include "ui/athar_sound.h"
 #include "ui/permission_dialog.h"
 #include "ui/settings_window.h"
 #include "app_window.h"
@@ -77,6 +78,13 @@ int WINAPI wWinMain(
       database, permissions, agent,
       mcp_allowlist, mcp_dialog, mcp_client,
       history, bookmarks);
+
+  const auto athar_enabled =
+      database.GetSetting(cx::ui::kAtharStartupSetting);
+  if (!athar_enabled.has_value() ||
+      *athar_enabled == "1") {
+    cx::ui::AtharSound::Instance().Play();
+  }
 
   AppWindow app(
       agent, permissions,

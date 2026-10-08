@@ -138,6 +138,8 @@ endif()
 add_library(cx_ui STATIC
   src/ui/agent_workspace.cpp
   src/ui/agent_workspace.h
+  src/ui/athar_sound.cpp
+  src/ui/athar_sound.h
   src/ui/context_graph.cpp
   src/ui/context_graph.h
   src/ui/design_tokens.h
@@ -157,7 +159,8 @@ target_link_libraries(cx_ui PUBLIC
   cx_browser
   user32
   shell32
-  comctl32)
+  comctl32
+  winmm)
 if(MSVC)
   target_compile_options(cx_ui PRIVATE /W4 /permissive- /EHsc)
 endif()

@@ -103,6 +103,7 @@ private:
   HWND hwnd_ = nullptr;
   HWND tabs_ = nullptr;
   HWND dashboard_label_ = nullptr;
+  HWND athar_checkbox_ = nullptr;
   HWND mcp_list_ = nullptr;
   HWND data_label_ = nullptr;
 

@@ -30,6 +30,8 @@ The window contains four pages:
 
 Privacy settings are persisted immediately. The privacy dashboard shows enabled agent permissions, active MCP state, MCP allowlist count, and local-data size.
 
+CX - ATHAR is the optional eight-second startup identity. It is generated and played locally, is enabled by default, never delays browser startup, and makes no network request. The Privacy & Security page provides a startup toggle plus Preview ATHAR and Stop audio controls. Windows volume and mute settings remain authoritative.
+
 ## 5. Agent permissions
 
 The local agent starts denied. Each capability is represented by its own permission. Granting agent.run does not automatically grant page reading, navigation, tab management, clipboard writing, native messaging, or MCP access.

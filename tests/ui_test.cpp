@@ -10,6 +10,7 @@
 #include "localization/strings.h"
 #include "storage/database.h"
 #include "ui/agent_workspace.h"
+#include "ui/athar_sound.h"
 #include "ui/context_graph.h"
 #include "ui/design_tokens.h"
 #include "ui/najdi_theme.h"
@@ -30,6 +31,7 @@
 #include <thread>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -178,6 +180,42 @@ TEST(ContextGraphTest, GroupsTabsByOriginAndMarksActiveTab) {
     EXPECT_GE(node.y, 0.0F);
     EXPECT_LE(node.y, 1.0F);
   }
+}
+
+TEST(AtharSoundTest, GeneratesEightSecondStereoPcmWithSignal) {
+  const auto wave = cx::ui::AtharSound::BuildWave();
+  constexpr std::size_t expected_frames = 48000u * 8u;
+  ASSERT_EQ(wave.size(), 44u + expected_frames * 4u);
+  ASSERT_GE(wave.size(), 48u);
+
+  EXPECT_EQ(
+      std::string(wave.begin(), wave.begin() + 4),
+      "RIFF");
+  EXPECT_EQ(
+      std::string(wave.begin() + 8, wave.begin() + 12),
+      "WAVE");
+  EXPECT_EQ(wave[22], 2u);
+  EXPECT_EQ(wave[23], 0u);
+  EXPECT_EQ(wave[24], 0x80u);
+  EXPECT_EQ(wave[25], 0xBBu);
+  EXPECT_EQ(wave[34], 16u);
+  EXPECT_EQ(wave[35], 0u);
+
+  std::uint16_t peak = 0;
+  for (std::size_t i = 44; i + 1 < wave.size(); i += 2) {
+    const std::uint16_t encoded =
+        static_cast<std::uint16_t>(wave[i]) |
+        (static_cast<std::uint16_t>(wave[i + 1]) << 8);
+    const std::int16_t sample =
+        static_cast<std::int16_t>(encoded);
+    const std::uint16_t magnitude =
+        sample == std::numeric_limits<std::int16_t>::min()
+            ? 32768u
+            : static_cast<std::uint16_t>(
+                  sample < 0 ? -sample : sample);
+    peak = (std::max)(peak, magnitude);
+  }
+  EXPECT_GT(peak, 2048u);
 }
 
 TEST(ContextGraphTest, CapsTabCountToKeepTheViewQuiet) {
@@ -512,6 +550,24 @@ TEST_F(PrivacyUiTest, SettingsWindowCreatesFourPagesAndPersistsToggle) {
       database_->GetSetting(
           "privacy.save_history").value_or(""),
       "1");
+
+  HWND athar = FindWindowExW(
+      hwnd, nullptr, L"BUTTON",
+      L"Play CX - ATHAR at startup (local audio only)");
+  ASSERT_NE(athar, nullptr);
+  EXPECT_EQ(
+      SendMessageW(athar, BM_GETCHECK, 0, 0),
+      BST_CHECKED);
+  SendMessageW(
+      athar, BM_SETCHECK, BST_UNCHECKED, 0);
+  SendMessageW(
+      hwnd, WM_COMMAND,
+      MAKEWPARAM(6050, BN_CLICKED),
+      reinterpret_cast<LPARAM>(athar));
+  EXPECT_EQ(
+      database_->GetSetting(
+          cx::ui::kAtharStartupSetting).value_or(""),
+      "0");
 
   HWND agent_run = FindWindowExW(
       hwnd, nullptr, L"BUTTON",
