@@ -3,6 +3,7 @@
 #include "browser/bookmarks_dialog.h"
 #include "browser/history_dialog.h"
 #include "browser/navigation_controller.h"
+#include "ui/agent_workspace.h"
 
 #include <windows.h>
 #include <commctrl.h>
@@ -54,10 +55,13 @@ public:
 private:
   static LRESULT CALLBACK WndProc(
       HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
+  static LRESULT CALLBACK ActivityShieldProc(
+      HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
 
   bool Create(HINSTANCE instance, int show_command);
   void CreateMenus();
   void CreateBrowserControls();
+  void CreateAgentWorkspaceControls();
   void HandleCommand(WORD command);
   void HandleNotify(const NMHDR* header);
 
@@ -68,6 +72,8 @@ private:
   void RefreshAddressBar();
   void RefreshAddressFromWebView();
   void SetBrowserStatus(std::wstring_view text);
+  void SetAgentRunning(bool running);
+  void RefreshAgentWorkspace();
   void AddTooltip(HWND control, const wchar_t* text);
 
   void NavigateAddressBar();
@@ -107,8 +113,23 @@ private:
   HWND bookmark_button_ = nullptr;
   HWND new_tab_button_ = nullptr;
   HWND close_tab_button_ = nullptr;
+  HWND agent_toggle_button_ = nullptr;
   HWND status_label_ = nullptr;
+
+  HWND agent_panel_ = nullptr;
+  HWND agent_title_ = nullptr;
+  HWND agent_status_ = nullptr;
+  HWND agent_scope_ = nullptr;
+  HWND agent_log_ = nullptr;
+  HWND agent_start_button_ = nullptr;
+  HWND agent_microphone_button_ = nullptr;
+  HWND activity_shield_ = nullptr;
+  HWND stop_strip_ = nullptr;
+  HWND emergency_stop_button_ = nullptr;
   HWND tooltip_ = nullptr;
+
+  cx::ui::AgentWorkspacePolicy workspace_policy_;
+  bool agent_panel_visible_ = true;
 
   Microsoft::WRL::ComPtr<ICoreWebView2Controller> controller_;
   Microsoft::WRL::ComPtr<ICoreWebView2> webview_;

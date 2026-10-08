@@ -25,6 +25,8 @@ namespace design = cx::ui::design;
 
 namespace {
 constexpr wchar_t kWindowClass[] = L"CXBuildWindowClass";
+constexpr wchar_t kActivityShieldClass[] =
+    L"CXBuildAgentActivityShield";
 constexpr wchar_t kWindowTitle[] = L"CX Build";
 
 constexpr WORD kAgentStart = 40001;
@@ -42,6 +44,7 @@ constexpr WORD kCloseTab = 41007;
 constexpr WORD kHistory = 41008;
 constexpr WORD kBookmarks = 41009;
 constexpr WORD kSettings = 41010;
+constexpr WORD kToggleAgentPanel = 41011;
 
 constexpr UINT_PTR kAddressSubclassId = 0x43584144;
 constexpr std::size_t kMaxVisibleTabTitle = 28;
@@ -205,6 +208,17 @@ bool AppWindow::Create(HINSTANCE instance, int) {
     return false;
   }
 
+  WNDCLASSEXW shield_class{};
+  shield_class.cbSize = sizeof(shield_class);
+  shield_class.hInstance = instance;
+  shield_class.lpfnWndProc = &AppWindow::ActivityShieldProc;
+  shield_class.lpszClassName = kActivityShieldClass;
+  shield_class.hCursor = LoadCursorW(nullptr, IDC_NO);
+  if (!RegisterClassExW(&shield_class) &&
+      GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
+    return false;
+  }
+
   hwnd_ = CreateWindowExW(
       0, kWindowClass, kWindowTitle, WS_OVERLAPPEDWINDOW,
       CW_USEDEFAULT, CW_USEDEFAULT,
@@ -364,12 +378,21 @@ void AppWindow::CreateBrowserControls() {
       design::Density::IconButtonWidth,
       design::Density::ControlHeight,
       hwnd_, reinterpret_cast<HMENU>(kCloseTab), nullptr, nullptr);
+  agent_toggle_button_ = CreateWindowExW(
+      0, L"BUTTON", L"Agent",
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
+      0, 0,
+      68, design::Density::ControlHeight,
+      hwnd_, reinterpret_cast<HMENU>(kToggleAgentPanel),
+      nullptr, nullptr);
 
   status_label_ = CreateWindowExW(
       0, L"STATIC", L"Ready",
       WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE,
       0, 0, 100, design::Density::StatusHeight,
       hwnd_, nullptr, nullptr, nullptr);
+
+  CreateAgentWorkspaceControls();
 
   tooltip_ = CreateWindowExW(
       WS_EX_TOPMOST,
@@ -405,6 +428,10 @@ void AppWindow::CreateBrowserControls() {
     AddTooltip(
         close_tab_button_, cx::localization::Text(
             cx::localization::StringId::CloseTab).data());
+    AddTooltip(agent_toggle_button_, L"Show or hide the agent workspace");
+    AddTooltip(
+        agent_microphone_button_,
+        L"Voice input is unavailable in this build");
   }
 
   SendMessageW(
@@ -416,6 +443,82 @@ void AppWindow::CreateBrowserControls() {
           design::Density::InputTextInset));
   cx::ui::theme::ApplyFontToChildren(hwnd_);
   LayoutControls();
+}
+
+void AppWindow::CreateAgentWorkspaceControls() {
+  agent_panel_ = CreateWindowExW(
+      0, L"STATIC", L"",
+      WS_CHILD | WS_VISIBLE,
+      0, 0, design::AgentWorkspaceLayout::PanelWidth, 200,
+      hwnd_, nullptr, nullptr, nullptr);
+  cx::ui::theme::StyleBorderedSurface(agent_panel_);
+
+  agent_title_ = CreateWindowExW(
+      0, L"STATIC", L"CX Agent",
+      WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE,
+      0, 0, 100, design::AgentWorkspaceLayout::HeaderHeight,
+      hwnd_, nullptr, nullptr, nullptr);
+  agent_status_ = CreateWindowExW(
+      0, L"STATIC", L"Stopped",
+      WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE,
+      0, 0, 100, design::Density::StatusHeight,
+      hwnd_, nullptr, nullptr, nullptr);
+  agent_scope_ = CreateWindowExW(
+      0, L"STATIC",
+      L"Scope: explicit permission grants only",
+      WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE,
+      0, 0, 100, design::Density::StatusHeight,
+      hwnd_, nullptr, nullptr, nullptr);
+  agent_log_ = CreateWindowExW(
+      0, L"LISTBOX", L"",
+      WS_CHILD | WS_VISIBLE | WS_VSCROLL |
+          LBS_NOINTEGRALHEIGHT | LBS_NOSEL,
+      0, 0, 100, design::AgentWorkspaceLayout::LogMinimumHeight,
+      hwnd_, nullptr, nullptr, nullptr);
+  cx::ui::theme::StyleBorderedSurface(agent_log_);
+  SendMessageW(
+      agent_log_, LB_ADDSTRING, 0,
+      reinterpret_cast<LPARAM>(
+          L"Ready. Page input is available."));
+
+  agent_start_button_ = CreateWindowExW(
+      0, L"BUTTON", L"Start agent",
+      WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
+      0, 0, 100, design::Density::ControlHeight,
+      hwnd_, reinterpret_cast<HMENU>(kAgentStart), nullptr, nullptr);
+  cx::ui::theme::MarkPrimaryAction(agent_start_button_);
+  agent_microphone_button_ = CreateWindowExW(
+      0, L"BUTTON", L"Mic",
+      WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+      0, 0, 56, design::Density::ControlHeight,
+      hwnd_, nullptr, nullptr, nullptr);
+  EnableWindow(agent_microphone_button_, FALSE);
+
+  activity_shield_ = CreateWindowExW(
+      WS_EX_LAYERED | WS_EX_NOACTIVATE,
+      kActivityShieldClass, L"",
+      WS_CHILD | WS_CLIPSIBLINGS,
+      0, 0, 100, 100,
+      hwnd_, nullptr, GetModuleHandleW(nullptr), this);
+  if (activity_shield_) {
+    SetLayeredWindowAttributes(
+        activity_shield_, 0,
+        design::AgentWorkspaceLayout::ShieldAlpha,
+        LWA_ALPHA);
+  }
+
+  stop_strip_ = CreateWindowExW(
+      0, L"STATIC",
+      L"Agent active - pointer input is locked",
+      WS_CHILD | SS_LEFT | SS_CENTERIMAGE,
+      0, 0, 100, design::AgentWorkspaceLayout::StopStripHeight,
+      hwnd_, nullptr, nullptr, nullptr);
+  emergency_stop_button_ = CreateWindowExW(
+      0, L"BUTTON", L"Stop agent",
+      WS_CHILD | WS_TABSTOP | BS_OWNERDRAW,
+      0, 0, 120, design::Density::ControlHeight,
+      hwnd_, reinterpret_cast<HMENU>(kAgentStop), nullptr, nullptr);
+  cx::ui::theme::MarkPrimaryAction(emergency_stop_button_);
 }
 
 void AppWindow::HandleCommand(WORD command) {
@@ -456,6 +559,10 @@ void AppWindow::HandleCommand(WORD command) {
     case kSettings:
       settings_window_.Show(hwnd_);
       return;
+    case kToggleAgentPanel:
+      agent_panel_visible_ = !agent_panel_visible_;
+      LayoutControls();
+      return;
     case kMcpAllowlist:
       mcp_dialog_.Show(hwnd_);
       return;
@@ -465,13 +572,13 @@ void AppWindow::HandleCommand(WORD command) {
 
   if (command == kAgentStart) {
     if (agent_.Start(hwnd_)) {
-      MessageBoxW(
-          hwnd_, L"CX Agent is running.",
-          L"CX Agent", MB_OK | MB_ICONINFORMATION);
+      SetAgentRunning(true);
     } else {
-      MessageBoxW(
-          hwnd_, L"CX Agent remains stopped.",
-          L"CX Agent", MB_OK | MB_ICONINFORMATION);
+      SetBrowserStatus(L"Agent start denied or unavailable");
+      SendMessageW(
+          agent_log_, LB_ADDSTRING, 0,
+          reinterpret_cast<LPARAM>(
+              L"Start denied. Review explicit permissions."));
     }
     return;
   }
@@ -479,9 +586,7 @@ void AppWindow::HandleCommand(WORD command) {
   if (command == kAgentStop) {
     mcp_client_.Stop();
     agent_.Stop();
-    MessageBoxW(
-        hwnd_, L"CX Agent is stopped.",
-        L"CX Agent", MB_OK | MB_ICONINFORMATION);
+    SetAgentRunning(false);
     return;
   }
 
@@ -500,6 +605,7 @@ void AppWindow::HandleCommand(WORD command) {
 
     mcp_client_.Stop();
     agent_.Stop();
+    SetAgentRunning(false);
     if (permissions_.RevokeAll()) {
       MessageBoxW(
           hwnd_, L"All agent permissions were revoked.",
@@ -526,87 +632,188 @@ void AppWindow::LayoutControls() {
 
   RECT client{};
   GetClientRect(hwnd_, &client);
-  const int width = static_cast<int>(
-      client.right > client.left
-          ? client.right - client.left
-          : 0);
-  const int height = static_cast<int>(
-      client.bottom > client.top
-          ? client.bottom - client.top
-          : 0);
-
+  const int width = client.right > client.left
+      ? static_cast<int>(client.right - client.left)
+      : 0;
+  const int height = client.bottom > client.top
+      ? static_cast<int>(client.bottom - client.top)
+      : 0;
   const int tab_height = design::Density::TabHeight;
-  const int toolbar_y =
-      tab_height + design::Spacing::Xxs;
-  const int control_height =
-      design::Density::ControlHeight;
+  const int toolbar_y = tab_height + design::Spacing::Xxs;
+  const int control_height = design::Density::ControlHeight;
   const int gap = design::Spacing::Sm;
-  const int button_width =
-      design::Density::IconButtonWidth;
+  const int button_width = design::Density::IconButtonWidth;
   const int status_y =
       toolbar_y + control_height + design::Spacing::Xxs;
   const int content_y =
       status_y + design::Density::StatusHeight +
       design::Spacing::Xxs;
+  const int stop_height = workspace_policy_.emergency_stop_visible()
+      ? design::AgentWorkspaceLayout::StopStripHeight
+      : 0;
+  const int content_bottom = (std::max)(content_y, height - stop_height);
 
   MoveWindow(tab_strip_, 0, 0, width, tab_height, TRUE);
 
   int x = design::Spacing::Sm;
-  MoveWindow(
-      back_button_, x, toolbar_y,
-      button_width, control_height, TRUE);
-  x += button_width + gap;
-  MoveWindow(
-      forward_button_, x, toolbar_y,
-      button_width, control_height, TRUE);
-  x += button_width + gap;
-  MoveWindow(
-      reload_button_, x, toolbar_y,
-      button_width, control_height, TRUE);
-  x += button_width + gap;
+  for (HWND button : {back_button_, forward_button_, reload_button_}) {
+    MoveWindow(button, x, toolbar_y, button_width, control_height, TRUE);
+    x += button_width + gap;
+  }
 
+  const int agent_button_width = 68;
   const int right_fixed =
-      (4 * button_width) +
-      (3 * gap) +
-      design::Spacing::Lg;
-  const int requested_address_width =
-      width - x - right_fixed;
-  const int address_width =
-      requested_address_width >
-              design::Density::MinimumInputWidth
-          ? requested_address_width
-          : design::Density::MinimumInputWidth;
+      (4 * button_width) + agent_button_width +
+      (4 * gap) + design::Spacing::Lg;
+  const int requested_address_width = width - x - right_fixed;
+  const int address_width = (std::max)(
+      requested_address_width,
+      design::Density::MinimumInputWidth);
   MoveWindow(
       address_bar_, x, toolbar_y,
       address_width, control_height, TRUE);
   x += address_width + gap;
 
   for (HWND button : {
-           go_button_,
-           bookmark_button_,
-           new_tab_button_,
-           close_tab_button_}) {
-    MoveWindow(
-        button, x, toolbar_y,
-        button_width, control_height, TRUE);
+           go_button_, bookmark_button_,
+           new_tab_button_, close_tab_button_}) {
+    MoveWindow(button, x, toolbar_y, button_width, control_height, TRUE);
     x += button_width + gap;
   }
+  MoveWindow(
+      agent_toggle_button_, x, toolbar_y,
+      agent_button_width, control_height, TRUE);
 
-  if (status_label_) {
+  MoveWindow(
+      status_label_, design::Spacing::Md, status_y,
+      (std::max)(0, width - 2 * design::Spacing::Md),
+      design::Density::StatusHeight, TRUE);
+
+  const int panel_width = agent_panel_visible_
+      ? (std::min)(
+            design::AgentWorkspaceLayout::PanelWidth,
+            (std::max)(0, width -
+                design::AgentWorkspaceLayout::MinimumBrowserWidth))
+      : 0;
+  const int panel_height = (std::max)(0, content_bottom - content_y);
+  const int browser_x = panel_width > 0
+      ? panel_width + design::Spacing::Sm
+      : 0;
+  const int browser_width = (std::max)(0, width - browser_x);
+
+  for (HWND control : {
+           agent_panel_, agent_title_, agent_status_, agent_scope_,
+           agent_log_, agent_start_button_, agent_microphone_button_}) {
+    ShowWindow(
+        control,
+        panel_width > 0 ? SW_SHOWNOACTIVATE : SW_HIDE);
+  }
+  if (panel_width > 0) {
+    const int inset = design::AgentWorkspaceLayout::PanelInset;
+    const int inner_width = (std::max)(0, panel_width - 2 * inset);
+    MoveWindow(agent_panel_, 0, content_y, panel_width, panel_height, TRUE);
+    int panel_y = content_y + inset;
     MoveWindow(
-        status_label_,
-        design::Spacing::Md,
-        status_y,
-        width > (2 * design::Spacing::Md)
-            ? width - (2 * design::Spacing::Md)
-            : 0,
-        design::Density::StatusHeight,
-        TRUE);
+        agent_title_, inset, panel_y, inner_width,
+        design::AgentWorkspaceLayout::HeaderHeight, TRUE);
+    panel_y += design::AgentWorkspaceLayout::HeaderHeight;
+    MoveWindow(
+        agent_status_, inset, panel_y, inner_width,
+        design::Density::StatusHeight, TRUE);
+    panel_y += design::Density::StatusHeight;
+    MoveWindow(
+        agent_scope_, inset, panel_y, inner_width,
+        design::Density::StatusHeight, TRUE);
+    panel_y += design::Density::StatusHeight + design::Spacing::Md;
+    const int action_y =
+        content_bottom - inset - design::Density::ControlHeight;
+    const int log_height = (std::max)(
+        design::AgentWorkspaceLayout::LogMinimumHeight,
+        action_y - panel_y - design::Spacing::Md);
+    MoveWindow(
+        agent_log_, inset, panel_y, inner_width, log_height, TRUE);
+    const int mic_width = 56;
+    MoveWindow(
+        agent_start_button_, inset, action_y,
+        (std::max)(0, inner_width - mic_width - gap),
+        design::Density::ControlHeight, TRUE);
+    MoveWindow(
+        agent_microphone_button_,
+        panel_width - inset - mic_width, action_y,
+        mic_width, design::Density::ControlHeight, TRUE);
   }
 
   if (controller_) {
-    RECT bounds{0, content_y, width, height};
+    RECT bounds{browser_x, content_y, width, content_bottom};
     controller_->put_Bounds(bounds);
+  }
+
+  if (workspace_policy_.shield_visible()) {
+    MoveWindow(activity_shield_, 0, 0, width, content_bottom, TRUE);
+    ShowWindow(activity_shield_, SW_SHOWNOACTIVATE);
+    SetWindowPos(
+        activity_shield_, HWND_TOP, 0, 0, width, content_bottom,
+        SWP_NOACTIVATE | SWP_SHOWWINDOW);
+  } else {
+    ShowWindow(activity_shield_, SW_HIDE);
+  }
+
+  if (workspace_policy_.emergency_stop_visible()) {
+    const int strip_y = content_bottom;
+    MoveWindow(stop_strip_, 0, strip_y, width, stop_height, TRUE);
+    const int stop_width = 132;
+    const int stop_x =
+        (std::max)(design::Spacing::Md, width - stop_width -
+            design::Spacing::Md);
+    MoveWindow(
+        emergency_stop_button_, stop_x,
+        strip_y + design::Spacing::Md,
+        stop_width, design::Density::ControlHeight, TRUE);
+    ShowWindow(stop_strip_, SW_SHOWNOACTIVATE);
+    ShowWindow(emergency_stop_button_, SW_SHOWNOACTIVATE);
+    SetWindowPos(
+        stop_strip_, HWND_TOP, 0, strip_y, width, stop_height,
+        SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    SetWindowPos(
+        emergency_stop_button_, HWND_TOP, stop_x,
+        strip_y + design::Spacing::Md,
+        stop_width, design::Density::ControlHeight,
+        SWP_NOACTIVATE | SWP_SHOWWINDOW);
+  } else {
+    ShowWindow(stop_strip_, SW_HIDE);
+    ShowWindow(emergency_stop_button_, SW_HIDE);
+  }
+}
+
+void AppWindow::SetAgentRunning(bool running) {
+  workspace_policy_.SetAgentRunning(running);
+  RefreshAgentWorkspace();
+  LayoutControls();
+  if (running && emergency_stop_button_) {
+    SetFocus(emergency_stop_button_);
+  }
+}
+
+void AppWindow::RefreshAgentWorkspace() {
+  const bool running = workspace_policy_.agent_running();
+  SetWindowTextW(agent_status_, running
+      ? L"Running - pointer input locked"
+      : L"Stopped - page input available");
+  SetWindowTextW(
+      agent_start_button_,
+      running ? L"Agent running" : L"Start agent");
+  EnableWindow(agent_start_button_, running ? FALSE : TRUE);
+  SetBrowserStatus(running
+      ? L"Agent active - use the bottom control to stop"
+      : L"Agent stopped");
+  SendMessageW(
+      agent_log_, LB_ADDSTRING, 0,
+      reinterpret_cast<LPARAM>(running
+          ? L"Agent started. All pointer targets are shielded."
+          : L"Agent stopped. Pointer input restored."));
+  const LRESULT count = SendMessageW(agent_log_, LB_GETCOUNT, 0, 0);
+  if (count > 0) {
+    SendMessageW(agent_log_, LB_SETTOPINDEX, count - 1, 0);
   }
 }
 
@@ -1095,6 +1302,60 @@ void AppWindow::HandleNewWindow(
   RefreshBrowserChrome();
   navigation_.NavigateAddress(target);
   RefreshBrowserChrome();
+}
+
+LRESULT CALLBACK AppWindow::ActivityShieldProc(
+    HWND hwnd, UINT message,
+    WPARAM wparam, LPARAM lparam) {
+  if (message == WM_NCCREATE) {
+    const auto* create =
+        reinterpret_cast<CREATESTRUCTW*>(lparam);
+    SetWindowLongPtrW(
+        hwnd, GWLP_USERDATA,
+        reinterpret_cast<LONG_PTR>(create->lpCreateParams));
+  }
+
+  switch (message) {
+    case WM_ERASEBKGND:
+      return TRUE;
+    case WM_PAINT: {
+      PAINTSTRUCT paint{};
+      HDC dc = BeginPaint(hwnd, &paint);
+      RECT client{};
+      GetClientRect(hwnd, &client);
+      HBRUSH fill = CreateSolidBrush(design::Color::SurfaceRaised);
+      FillRect(dc, &client, fill);
+      DeleteObject(fill);
+      HBRUSH rail = CreateSolidBrush(design::Color::AgentActive);
+      FrameRect(dc, &client, rail);
+      DeleteObject(rail);
+      SetBkMode(dc, TRANSPARENT);
+      SetTextColor(dc, design::Color::Text);
+      SelectObject(dc, cx::ui::theme::UiFontSemibold());
+      DrawTextW(
+          dc, L"Agent active - pointer input locked", -1,
+          &client,
+          DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+      EndPaint(hwnd, &paint);
+      return 0;
+    }
+    case WM_SETCURSOR:
+      SetCursor(LoadCursorW(nullptr, IDC_NO));
+      return TRUE;
+    case WM_LBUTTONDOWN:
+    case WM_LBUTTONUP:
+    case WM_LBUTTONDBLCLK:
+    case WM_RBUTTONDOWN:
+    case WM_RBUTTONUP:
+    case WM_RBUTTONDBLCLK:
+    case WM_MBUTTONDOWN:
+    case WM_MBUTTONUP:
+    case WM_MOUSEWHEEL:
+    case WM_MOUSEHWHEEL:
+      return 0;
+    default:
+      return DefWindowProcW(hwnd, message, wparam, lparam);
+  }
 }
 
 LRESULT CALLBACK AppWindow::WndProc(

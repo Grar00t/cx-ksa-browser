@@ -136,6 +136,8 @@ if(MSVC)
 endif()
 
 add_library(cx_ui STATIC
+  src/ui/agent_workspace.cpp
+  src/ui/agent_workspace.h
   src/ui/design_tokens.h
   src/ui/najdi_theme.cpp
   src/ui/najdi_theme.h

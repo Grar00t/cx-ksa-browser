@@ -9,6 +9,7 @@
 #include "mcp/rate_limiter.h"
 #include "localization/strings.h"
 #include "storage/database.h"
+#include "ui/agent_workspace.h"
 #include "ui/design_tokens.h"
 #include "ui/najdi_theme.h"
 #include "ui/privacy_dashboard.h"
@@ -113,6 +114,39 @@ TEST(DesignSystemTest, TokensRespectNajdiConstraints) {
 }
 
 
+
+TEST(AgentWorkspaceTest, RunningBlocksAllPointerTargetsExceptEmergencyStop) {
+  cx::ui::AgentWorkspacePolicy policy;
+  EXPECT_FALSE(policy.shield_visible());
+  EXPECT_FALSE(policy.emergency_stop_visible());
+
+  policy.SetAgentRunning(true);
+
+  EXPECT_TRUE(policy.agent_running());
+  EXPECT_TRUE(policy.shield_visible());
+  EXPECT_TRUE(policy.emergency_stop_visible());
+  EXPECT_TRUE(policy.BlocksPointer(
+      cx::ui::WorkspacePointerTarget::BrowserChrome));
+  EXPECT_TRUE(policy.BlocksPointer(
+      cx::ui::WorkspacePointerTarget::BrowserContent));
+  EXPECT_TRUE(policy.BlocksPointer(
+      cx::ui::WorkspacePointerTarget::AgentPanel));
+  EXPECT_FALSE(policy.BlocksPointer(
+      cx::ui::WorkspacePointerTarget::EmergencyStop));
+
+  policy.SetAgentRunning(false);
+  EXPECT_FALSE(policy.BlocksPointer(
+      cx::ui::WorkspacePointerTarget::BrowserContent));
+}
+
+TEST(DesignSystemTest, AgentWorkspaceStaysCompactAndLeavesBrowserUsable) {
+  using namespace cx::ui::design;
+  EXPECT_LE(AgentWorkspaceLayout::PanelWidth, 320);
+  EXPECT_GE(AgentWorkspaceLayout::MinimumBrowserWidth, 480);
+  EXPECT_EQ(AgentWorkspaceLayout::ActivityRail, 2);
+  EXPECT_GT(AgentWorkspaceLayout::ShieldAlpha, 0);
+  EXPECT_LT(AgentWorkspaceLayout::ShieldAlpha, 96);
+}
 
 TEST(DesignSystemTest, SpaceTealTokensAreExactAndStateColorsDistinct) {
   using namespace cx::ui::design;
