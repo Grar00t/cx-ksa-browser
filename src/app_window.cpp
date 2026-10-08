@@ -1123,11 +1123,13 @@ int AppWindow::HitTestContextGraph(POINT point) const {
   if (!context_graph_view_) return -1;
   RECT client{};
   GetClientRect(context_graph_view_, &client);
-  const int width = (std::max)(0, client.right - client.left);
+  const int width = client.right > client.left
+      ? static_cast<int>(client.right - client.left)
+      : 0;
   const int plot_top = design::ContextGraphLayout::HeaderHeight;
   const int plot_height = (std::max)(
       1,
-      client.bottom - plot_top -
+      static_cast<int>(client.bottom) - plot_top -
           design::ContextGraphLayout::FooterHeight);
   for (std::size_t index = 0;
        index < context_graph_.nodes.size();
@@ -1203,11 +1205,13 @@ void AppWindow::PaintContextGraph(HDC dc) {
       -1, &subtitle,
       DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 
-  const int width = (std::max)(0, client.right - client.left);
+  const int width = client.right > client.left
+      ? static_cast<int>(client.right - client.left)
+      : 0;
   const int plot_top = design::ContextGraphLayout::HeaderHeight;
   const int plot_height = (std::max)(
       1,
-      client.bottom - plot_top -
+      static_cast<int>(client.bottom) - plot_top -
           design::ContextGraphLayout::FooterHeight);
   const auto point_for = [&](const cx::ui::ContextGraphNode& node) {
     return POINT{
