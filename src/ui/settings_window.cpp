@@ -727,7 +727,7 @@ void SettingsWindow::RefreshPrivacy() {
     SendMessageW(
         athar_checkbox_,
         BM_SETCHECK,
-        ReadBool(kAtharStartupSetting, true)
+        ReadBool(kAtharStartupSetting, false)
             ? BST_CHECKED
             : BST_UNCHECKED,
         0);
