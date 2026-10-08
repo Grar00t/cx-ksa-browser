@@ -4,6 +4,7 @@
 
 #include <bcrypt.h>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdlib>
@@ -326,6 +327,10 @@ bool AgentCore::AuthorizeScopedAction(
     bool sensitive_action_confirmed) {
   if (state_ != AgentState::Running) {
     logger_.Log("scoped_action_denied_agent_stopped", action);
+    return false;
+  }
+  if (action == "credential.fill") {
+    logger_.Log("scoped_action_denied_credential", action);
     return false;
   }
   if (IsSensitiveAction(action) &&
