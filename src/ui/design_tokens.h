@@ -72,6 +72,7 @@ struct Density final {
 };
 
 struct ContextGraphLayout final {
+  static constexpr int PanelWidth = 360;
   static constexpr int HeaderHeight = 62;
   static constexpr int FooterHeight = 28;
   static constexpr int NodeRadius = 5;
@@ -91,9 +92,93 @@ struct AgentWorkspaceLayout final {
   static constexpr int LogMinimumHeight = 120;
 };
 
+struct ShellRect final {
+  int left = 0;
+  int top = 0;
+  int right = 0;
+  int bottom = 0;
+
+  constexpr int Width() const {
+    return right > left ? right - left : 0;
+  }
+  constexpr int Height() const {
+    return bottom > top ? bottom - top : 0;
+  }
+};
+
+struct BrowserShellLayout final {
+  ShellRect browser;
+  ShellRect agent;
+  ShellRect graph;
+  ShellRect status;
+  ShellRect stop;
+};
+
+constexpr int LayoutMax(int left, int right) {
+  return left > right ? left : right;
+}
+
+constexpr int LayoutMin(int left, int right) {
+  return left < right ? left : right;
+}
+
+constexpr BrowserShellLayout ComputeBrowserShellLayout(
+    int width, int height,
+    bool agent_visible,
+    bool graph_visible,
+    bool emergency_stop_visible) {
+  const int safe_width = LayoutMax(0, width);
+  const int safe_height = LayoutMax(0, height);
+  const int toolbar_y =
+      Density::TabHeight + Spacing::Xxs;
+  const int content_top =
+      toolbar_y + Density::ControlHeight + Spacing::Xxs;
+  const int status_top =
+      LayoutMax(content_top, safe_height - Density::StatusHeight);
+  const int stop_top = emergency_stop_visible
+      ? LayoutMax(
+            content_top,
+            status_top - AgentWorkspaceLayout::StopStripHeight)
+      : status_top;
+
+  const int side_gap_count =
+      (agent_visible ? 1 : 0) + (graph_visible ? 1 : 0);
+  const int side_budget = LayoutMax(
+      0,
+      safe_width - AgentWorkspaceLayout::MinimumBrowserWidth -
+          side_gap_count * Spacing::Sm);
+  const int agent_width = agent_visible
+      ? LayoutMin(
+            AgentWorkspaceLayout::PanelWidth,
+            graph_visible ? side_budget / 2 : side_budget)
+      : 0;
+  const int graph_width = graph_visible
+      ? LayoutMin(
+            ContextGraphLayout::PanelWidth,
+            side_budget - agent_width)
+      : 0;
+  const int browser_left =
+      agent_width > 0 ? agent_width + Spacing::Sm : 0;
+  const int browser_right = LayoutMax(
+      browser_left,
+      safe_width - graph_width -
+          (graph_width > 0 ? Spacing::Sm : 0));
+
+  return BrowserShellLayout{
+      ShellRect{browser_left, content_top,
+                browser_right, stop_top},
+      ShellRect{0, content_top,
+                agent_width, stop_top},
+      ShellRect{
+          graph_width > 0 ? browser_right + Spacing::Sm : safe_width,
+          content_top, safe_width, stop_top},
+      ShellRect{0, status_top, safe_width, safe_height},
+      ShellRect{0, stop_top, safe_width, status_top}};
+}
+
 struct Window final {
-  static constexpr int AppWidth = 1024;
-  static constexpr int AppHeight = 768;
+  static constexpr int AppWidth = 1280;
+  static constexpr int AppHeight = 800;
   static constexpr int SettingsWidth = 900;
   static constexpr int SettingsHeight = 680;
 };
