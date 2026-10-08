@@ -153,6 +153,7 @@ bool LocalModelAdapter::Complete(
     std::string* response,
     std::chrono::milliseconds timeout) const {
   if (!response || !enabled() || model_.empty() ||
+      model_.size() > 256 ||
       prompt.size() > 1024 * 1024 ||
       timeout <= std::chrono::milliseconds::zero()) {
     return false;
