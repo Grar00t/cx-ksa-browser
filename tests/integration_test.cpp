@@ -54,7 +54,7 @@ TEST_F(IntegrationTest, LocalStatePersistsAcrossSubsystems) {
 
   cx::storage::Database database(db_path);
   ASSERT_TRUE(database.Open());
-  ASSERT_EQ(database.SchemaVersion(), 3);
+  ASSERT_EQ(database.SchemaVersion(), 4);
 
   cx::config::ConfigManager config(config_path);
   ASSERT_NE(config.Load(), cx::config::LoadStatus::Failed);
@@ -103,7 +103,7 @@ TEST_F(IntegrationTest, LocalStatePersistsAcrossSubsystems) {
 
   cx::storage::Database reopened(db_path);
   ASSERT_TRUE(reopened.Open());
-  EXPECT_EQ(reopened.SchemaVersion(), 3);
+  EXPECT_EQ(reopened.SchemaVersion(), 4);
 
   cx::browser::TabManager restored_tabs(reopened);
   ASSERT_TRUE(restored_tabs.Restore());
