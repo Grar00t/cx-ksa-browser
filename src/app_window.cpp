@@ -673,8 +673,12 @@ void AppWindow::LayoutControls() {
 
   RECT client{};
   GetClientRect(hwnd_, &client);
-  const int width = (std::max)(0, client.right - client.left);
-  const int height = (std::max)(0, client.bottom - client.top);
+  const int width = client.right > client.left
+      ? static_cast<int>(client.right - client.left)
+      : 0;
+  const int height = client.bottom > client.top
+      ? static_cast<int>(client.bottom - client.top)
+      : 0;
   const int tab_height = design::Density::TabHeight;
   const int toolbar_y = tab_height + design::Spacing::Xxs;
   const int control_height = design::Density::ControlHeight;
