@@ -74,6 +74,12 @@ bool ParseEndpoint(
             ? static_cast<wchar_t>(ch - L'A' + L'a')
             : ch;
       });
+  if (parsed->host.size() >= 2 &&
+      parsed->host.front() == L'[' &&
+      parsed->host.back() == L']') {
+    parsed->host =
+        parsed->host.substr(1, parsed->host.size() - 2);
+  }
   parsed->path.assign(parts.lpszUrlPath, parts.dwUrlPathLength);
   if (parts.dwExtraInfoLength > 0) {
     parsed->path.append(parts.lpszExtraInfo, parts.dwExtraInfoLength);
