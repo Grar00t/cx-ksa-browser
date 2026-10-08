@@ -124,6 +124,8 @@ endif()
 add_library(cx_mcp STATIC
   src/mcp/mcp_client.cpp
   src/mcp/mcp_client.h
+  src/mcp/json_rpc_validator.cpp
+  src/mcp/json_rpc_validator.h
   src/mcp/allowlist_manager.cpp
   src/mcp/allowlist_manager.h
   src/mcp/rate_limiter.cpp
@@ -214,6 +216,7 @@ add_executable(storage_tests
   tests/agent_test.cpp
   tests/untrusted_page_content_test.cpp
   tests/mcp_test.cpp
+  tests/json_rpc_validator_test.cpp
   tests/browser_test.cpp
   tests/ui_test.cpp
   tests/config_test.cpp
