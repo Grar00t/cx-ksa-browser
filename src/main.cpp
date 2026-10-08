@@ -81,7 +81,7 @@ int WINAPI wWinMain(
 
   const auto athar_enabled =
       database.GetSetting(cx::ui::kAtharStartupSetting);
-  if (!athar_enabled.has_value() ||
+  if (athar_enabled.has_value() &&
       *athar_enabled == "1") {
     cx::ui::AtharSound::Instance().Play();
   }
