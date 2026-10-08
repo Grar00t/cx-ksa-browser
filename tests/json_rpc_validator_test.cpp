@@ -45,3 +45,49 @@ TEST(JsonRpcValidatorTest, RejectsExcessiveNesting) {
   EXPECT_FALSE(cx::mcp::JsonRpcValidator::ValidateRequest(
       json, &method));
 }
+
+TEST(JsonRpcValidatorTest, ExercisesSupportedJsonValueGrammar) {
+  std::string method;
+  EXPECT_TRUE(cx::mcp::JsonRpcValidator::ValidateRequest(
+      R"({"method":"tools.call-1","params":{"text":"quote\" slash\\ tab\t","values":[true,false,null,-12.5e+2,{},[]]},"id":"request-1","jsonrpc":"2.0"})",
+      &method));
+  EXPECT_EQ(method, "tools.call-1");
+  EXPECT_TRUE(cx::mcp::JsonRpcValidator::ValidateRequest(
+      R"({"jsonrpc":"2.0","id":0,"method":"ping","params":[]})",
+      &method));
+}
+
+TEST(JsonRpcValidatorTest, RejectsInvalidTokensAndRequiredFieldShapes) {
+  const std::vector<std::string> invalid{
+      R"({"jsonrpc":"2.0","id":"","method":"ping"})",
+      R"({"jsonrpc":"2.0","id":1,"method":""})",
+      R"({"jsonrpc":"2.0","id":1,"method":"bad method"})",
+      R"({"jsonrpc":"2.0","id":1,"method":"ping",})",
+      R"({"jsonrpc":"2.0","id":01,"method":"ping"})",
+      R"({"jsonrpc":"2.0","id":1.,"method":"ping"})",
+      R"({"jsonrpc":"2.0","id":1e,"method":"ping"})",
+      R"({"jsonrpc":"2.0","id":1,"method":"ping","params":[1,]})",
+      R"({"jsonrpc":"2.0","id":1,"method":"ping","params":{"x":}})",
+      R"({"jsonrpc":"2.0","id":1,"method":"ping","params":{"x":"bad\q"}})",
+      R"({"jsonrpc":"2.0","id":1,"method":"ping","params":{"x":tru}})",
+      R"({"jsonrpc":"2.0","id":1})",
+      R"({"jsonrpc":"2.0","method":"ping"})",
+      R"({"id":1,"method":"ping"})",
+      R"([])"
+  };
+  std::string method;
+  for (const auto& json : invalid) {
+    EXPECT_FALSE(cx::mcp::JsonRpcValidator::ValidateRequest(
+        json, &method)) << json;
+  }
+
+  EXPECT_FALSE(cx::mcp::JsonRpcValidator::ValidateRequest(
+      R"({"jsonrpc":"2.0","id":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx","method":"ping"})",
+      &method));
+  EXPECT_FALSE(cx::mcp::JsonRpcValidator::ValidateRequest(
+      R"({"jsonrpc":"2.0","id":1,"method":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"})",
+      &method));
+  EXPECT_FALSE(cx::mcp::JsonRpcValidator::ValidateRequest(
+      R"({"jsonrpc":"2.0","id":1,"method":"ping"})",
+      nullptr));
+}
