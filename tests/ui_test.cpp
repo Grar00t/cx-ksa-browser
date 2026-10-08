@@ -52,9 +52,9 @@ double ContrastRatio(COLORREF first, COLORREF second) {
   const double first_luminance = RelativeLuminance(first);
   const double second_luminance = RelativeLuminance(second);
   const double lighter =
-      std::max(first_luminance, second_luminance);
+      (std::max)(first_luminance, second_luminance);
   const double darker =
-      std::min(first_luminance, second_luminance);
+      (std::min)(first_luminance, second_luminance);
   return (lighter + 0.05) / (darker + 0.05);
 }
 
