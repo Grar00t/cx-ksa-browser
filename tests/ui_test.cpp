@@ -10,6 +10,7 @@
 #include "localization/strings.h"
 #include "storage/database.h"
 #include "ui/agent_workspace.h"
+#include "ui/athar_sound.h"
 #include "ui/context_graph.h"
 #include "ui/design_tokens.h"
 #include "ui/najdi_theme.h"
@@ -27,9 +28,11 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <future>
 #include <thread>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -178,6 +181,135 @@ TEST(ContextGraphTest, GroupsTabsByOriginAndMarksActiveTab) {
     EXPECT_GE(node.y, 0.0F);
     EXPECT_LE(node.y, 1.0F);
   }
+}
+
+TEST(AtharSoundTest, GeneratesEightSecondStereoPcmWithSignal) {
+  const auto wave = cx::ui::AtharSound::BuildWave();
+  constexpr std::size_t expected_frames = 48000u * 8u;
+  ASSERT_EQ(wave.size(), 44u + expected_frames * 4u);
+  ASSERT_GE(wave.size(), 48u);
+
+  EXPECT_EQ(
+      std::string(wave.begin(), wave.begin() + 4),
+      "RIFF");
+  EXPECT_EQ(
+      std::string(wave.begin() + 8, wave.begin() + 12),
+      "WAVE");
+  EXPECT_EQ(wave[22], 2u);
+  EXPECT_EQ(wave[23], 0u);
+  EXPECT_EQ(wave[24], 0x80u);
+  EXPECT_EQ(wave[25], 0xBBu);
+  EXPECT_EQ(wave[34], 16u);
+  EXPECT_EQ(wave[35], 0u);
+
+  std::uint16_t peak = 0;
+  for (std::size_t i = 44; i + 1 < wave.size(); i += 2) {
+    const std::uint16_t encoded =
+        static_cast<std::uint16_t>(wave[i]) |
+        (static_cast<std::uint16_t>(wave[i + 1]) << 8);
+    const std::int16_t sample =
+        static_cast<std::int16_t>(encoded);
+    const std::uint16_t magnitude =
+        sample == (std::numeric_limits<std::int16_t>::min)()
+            ? 32768u
+            : static_cast<std::uint16_t>(
+                  sample < 0 ? -sample : sample);
+    peak = (std::max)(peak, magnitude);
+  }
+  EXPECT_GT(peak, 2048u);
+}
+
+TEST(AtharSoundTest, PlayReturnsWithoutWaitingForRendering) {
+  std::promise<void> rendering_started;
+  auto rendering_started_future = rendering_started.get_future();
+  std::promise<void> release_rendering;
+  auto release_future = release_rendering.get_future().share();
+  cx::ui::AtharSound sound(
+      [&]() {
+        rendering_started.set_value();
+        release_future.wait();
+        return std::vector<std::uint8_t>{'R', 'I', 'F', 'F'};
+      },
+      [](const auto&) { return true; },
+      []() {});
+
+  auto requested = std::async(
+      std::launch::async, [&]() { return sound.Play(); });
+  const bool returned_while_rendering_waits =
+      requested.wait_for(std::chrono::seconds(2)) ==
+      std::future_status::ready;
+  const bool renderer_started =
+      rendering_started_future.wait_for(std::chrono::seconds(2)) ==
+      std::future_status::ready;
+  // Always release, even if the assertions fail.
+  sound.Stop();
+  release_rendering.set_value();
+  EXPECT_TRUE(returned_while_rendering_waits);
+  EXPECT_TRUE(renderer_started);
+  EXPECT_TRUE(requested.get());
+}
+
+TEST(AtharSoundTest, StopDuringSynthesisCancelsOldRequest) {
+  std::promise<void> entered;
+  auto entered_future = entered.get_future();
+  std::promise<void> release;
+  auto release_future = release.get_future().share();
+  std::atomic<int> play_count{0};
+
+  {
+    cx::ui::AtharSound sound(
+        [&]() {
+          entered.set_value();
+          release_future.wait();
+          return std::vector<std::uint8_t>{'R', 'I', 'F', 'F'};
+        },
+        [&](const auto&) {
+          ++play_count;
+          return true;
+        },
+        []() {});
+    EXPECT_TRUE(sound.Play());
+    const bool entered_renderer =
+        entered_future.wait_for(std::chrono::seconds(2)) ==
+        std::future_status::ready;
+    sound.Stop();
+    release.set_value();
+    EXPECT_TRUE(entered_renderer);
+  }
+  // Destructor joins the synthesis worker.
+  EXPECT_EQ(play_count.load(), 0);
+}
+
+TEST(AtharSoundTest, ShutdownStopsWhileWaveBufferStillExists) {
+  std::promise<void> played;
+  auto played_future = played.get_future();
+  std::atomic<const std::uint8_t*> active{nullptr};
+  std::atomic<int> stop_calls{0};
+  std::atomic<int> observed_byte{0};
+  {
+    cx::ui::AtharSound sound(
+        []() {
+          return std::vector<std::uint8_t>{'R', 'I', 'F', 'F'};
+        },
+        [&](const auto& wave) {
+          active.store(wave.data());
+          played.set_value();
+          return true;
+        },
+        [&]() {
+          ++stop_calls;
+          const auto* ptr = active.load();
+          if (ptr) {
+            observed_byte.store(*ptr);
+          }
+        });
+    EXPECT_TRUE(sound.Play());
+    EXPECT_EQ(
+        played_future.wait_for(std::chrono::seconds(2)),
+        std::future_status::ready);
+  }
+  EXPECT_GE(stop_calls.load(), 2);
+  EXPECT_EQ(observed_byte.load(), static_cast<int>('R'));
 }
 
 TEST(ContextGraphTest, CapsTabCountToKeepTheViewQuiet) {
@@ -511,6 +643,24 @@ TEST_F(PrivacyUiTest, SettingsWindowCreatesFourPagesAndPersistsToggle) {
   EXPECT_EQ(
       database_->GetSetting(
           "privacy.save_history").value_or(""),
+      "1");
+
+  HWND athar = FindWindowExW(
+      hwnd, nullptr, L"BUTTON",
+      L"Play CX - ATHAR at startup (local audio only)");
+  ASSERT_NE(athar, nullptr);
+  EXPECT_EQ(
+      SendMessageW(athar, BM_GETCHECK, 0, 0),
+      BST_UNCHECKED);
+  SendMessageW(
+      athar, BM_SETCHECK, BST_CHECKED, 0);
+  SendMessageW(
+      hwnd, WM_COMMAND,
+      MAKEWPARAM(6050, BN_CLICKED),
+      reinterpret_cast<LPARAM>(athar));
+  EXPECT_EQ(
+      database_->GetSetting(
+          cx::ui::kAtharStartupSetting).value_or(""),
       "1");
 
   HWND agent_run = FindWindowExW(

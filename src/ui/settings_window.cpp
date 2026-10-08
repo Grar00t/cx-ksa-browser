@@ -7,6 +7,7 @@
 #include "mcp/allowlist_manager.h"
 #include "mcp/mcp_client.h"
 #include "storage/database.h"
+#include "ui/athar_sound.h"
 #include "ui/najdi_theme.h"
 
 #include <commctrl.h>
@@ -26,6 +27,9 @@ constexpr wchar_t kWindowClass[] =
 constexpr UINT kLocalSizeReady = WM_APP + 201;
 
 constexpr WORD kPrivacyBase = 6001;
+constexpr WORD kAtharToggle = 6050;
+constexpr WORD kAtharPreview = 6051;
+constexpr WORD kAtharStop = 6052;
 constexpr WORD kPermissionBase = 6100;
 constexpr WORD kMcpManage = 6201;
 constexpr WORD kMcpDisconnect = 6202;
@@ -264,6 +268,32 @@ void SettingsWindow::CreatePrivacyPage() {
         design::Spacing::Sm;
   }
 
+  athar_checkbox_ = AddButton(
+      hwnd_,
+      L"Play CX - ATHAR at startup (local audio only)",
+      kAtharToggle,
+      design::SettingsLayout::PageContentStart,
+      y, 620, design::Density::SettingsCheckboxHeight,
+      BS_AUTOCHECKBOX);
+  page_controls_[0].push_back(athar_checkbox_);
+  y += design::Density::SettingsCheckboxHeight +
+      design::Spacing::Sm;
+
+  page_controls_[0].push_back(
+      AddButton(
+          hwnd_, L"Preview ATHAR",
+          kAtharPreview,
+          design::SettingsLayout::PageContentStart,
+          y, 132, design::Density::SettingsButtonHeight));
+  page_controls_[0].push_back(
+      AddButton(
+          hwnd_, L"Stop audio",
+          kAtharStop,
+          190, y, 110,
+          design::Density::SettingsButtonHeight));
+  y += design::Density::SettingsButtonHeight +
+      design::Spacing::Md;
+
   HWND sync = AddStatic(
       hwnd_,
       L"WebView sync: disabled by design (not configurable).",
@@ -494,6 +524,27 @@ void SettingsWindow::HandleCommand(WORD command) {
   }
 
   switch (command) {
+    case kAtharToggle: {
+      const bool enabled =
+          athar_checkbox_ &&
+          SendMessageW(
+              athar_checkbox_, BM_GETCHECK, 0, 0) ==
+              BST_CHECKED;
+      if (!WriteBool(kAtharStartupSetting, enabled)) {
+        RefreshPrivacy();
+        MessageBoxW(
+            hwnd_,
+            L"Could not persist the ATHAR audio setting.",
+            L"CX Settings", MB_OK | MB_ICONERROR);
+      }
+      break;
+    }
+    case kAtharPreview:
+      AtharSound::Instance().Play();
+      break;
+    case kAtharStop:
+      AtharSound::Instance().Stop();
+      break;
     case kMcpManage:
       allowlist_dialog_.Show(hwnd_);
       RefreshMcp();
@@ -672,6 +723,16 @@ void SettingsWindow::RefreshDashboard() {
 }
 
 void SettingsWindow::RefreshPrivacy() {
+  if (athar_checkbox_) {
+    SendMessageW(
+        athar_checkbox_,
+        BM_SETCHECK,
+        ReadBool(kAtharStartupSetting, false)
+            ? BST_CHECKED
+            : BST_UNCHECKED,
+        0);
+  }
+
   const auto& specs = PrivacySettings();
   const auto& controls = page_controls_[0];
   for (std::size_t i = 0; i < specs.size(); ++i) {
