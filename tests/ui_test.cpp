@@ -161,7 +161,7 @@ TEST(DesignSystemTest, RtlDirectionCanBeAppliedAndRemoved) {
 TEST(P07SettingsSchema, PrivacySettingsAreVisibleAndPrivacyFirst) {
   const auto& settings =
       cx::ui::SettingsWindow::PrivacySettings();
-  ASSERT_EQ(settings.size(), 3u);
+  ASSERT_EQ(settings.size(), 5u);
 
   EXPECT_EQ(settings[0].key, "privacy.save_history");
   EXPECT_FALSE(settings[0].default_value);
@@ -176,6 +176,18 @@ TEST(P07SettingsSchema, PrivacySettingsAreVisibleAndPrivacyFirst) {
       "privacy.clear_history_on_exit");
   EXPECT_TRUE(settings[2].default_value);
   EXPECT_NE(std::wstring(settings[2].label).size(), 0u);
+
+  EXPECT_EQ(settings[3].key, "advanced.developer_mode");
+  EXPECT_FALSE(settings[3].default_value);
+  EXPECT_NE(std::wstring(settings[3].label).size(), 0u);
+
+  EXPECT_EQ(
+      settings[4].key,
+      "privacy.microsoft_smartscreen");
+  EXPECT_FALSE(settings[4].default_value);
+  EXPECT_NE(
+      std::wstring(settings[4].label).find(L"Microsoft"),
+      std::wstring::npos);
 }
 
 TEST_F(PrivacyUiTest, MissingHistorySettingDoesNotPersistVisits) {
