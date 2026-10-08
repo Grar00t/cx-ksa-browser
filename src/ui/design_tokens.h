@@ -71,6 +71,17 @@ struct Density final {
   static constexpr int SettingsCheckboxHeight = 28;
 };
 
+struct AgentWorkspaceLayout final {
+  static constexpr int PanelWidth = 296;
+  static constexpr int MinimumBrowserWidth = 480;
+  static constexpr int HeaderHeight = 38;
+  static constexpr int StopStripHeight = 46;
+  static constexpr int ActivityRail = 2;
+  static constexpr BYTE ShieldAlpha = 48;
+  static constexpr int PanelInset = Spacing::Lg;
+  static constexpr int LogMinimumHeight = 120;
+};
+
 struct Window final {
   static constexpr int AppWidth = 1024;
   static constexpr int AppHeight = 768;
