@@ -134,7 +134,7 @@ add_library(cx_mcp STATIC
   src/mcp/allowlist_dialog.h)
 target_include_directories(cx_mcp PUBLIC src)
 target_compile_definitions(cx_mcp PRIVATE UNICODE _UNICODE)
-target_link_libraries(cx_mcp PUBLIC cx_agent user32 comdlg32)
+target_link_libraries(cx_mcp PUBLIC cx_agent user32 comdlg32 bcrypt)
 if(MSVC)
   target_compile_options(cx_mcp PRIVATE /W4 /permissive- /EHsc)
 endif()
