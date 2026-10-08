@@ -77,7 +77,23 @@ ContextGraph BuildContextGraph(
   std::vector<std::size_t> tab_order;
 
   const std::size_t count = (std::min)(tabs.size(), maximum_tabs);
+  std::vector<std::size_t> selected;
+  selected.reserve(count);
   for (std::size_t index = 0; index < count; ++index) {
+    selected.push_back(index);
+  }
+  if (!selected.empty() && count < tabs.size()) {
+    const auto active = std::find_if(
+        tabs.begin() + static_cast<std::ptrdiff_t>(count),
+        tabs.end(),
+        [](const ContextTabInput& tab) { return tab.active; });
+    if (active != tabs.end()) {
+      selected.back() = static_cast<std::size_t>(
+          std::distance(tabs.begin(), active));
+    }
+  }
+
+  for (const std::size_t index : selected) {
     const auto& tab = tabs[index];
     const std::string origin = SafeOriginLabel(tab.url);
 
