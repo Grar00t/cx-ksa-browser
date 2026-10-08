@@ -544,6 +544,8 @@ TEST(McpAllowlistDefaultPath, UsesAppDataConfigDirectory) {
 
 TEST_F(McpTest, AllowlistValidationRejectsUnsafeShapes) {
   auto valid = EchoServer("valid.server-1");
+  ASSERT_TRUE(allowlist_->AddOrUpdate(valid));
+  valid = *allowlist_->Find("valid.server-1");
   EXPECT_TRUE(
       cx::mcp::AllowlistManager::ValidateServer(valid));
 
