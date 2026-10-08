@@ -2,7 +2,9 @@
 
 #include <windows.h>
 
+#include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -32,11 +34,24 @@ struct CapabilityDescriptor {
 const CapabilityDescriptor& DescribeCapability(Capability capability);
 std::optional<Capability> CapabilityFromId(std::string_view id);
 
+struct PermissionScope {
+  std::int64_t tab_id = 0;
+  std::string origin;
+
+  bool operator==(const PermissionScope&) const = default;
+};
+
 class ConsentPrompt {
 public:
   virtual ~ConsentPrompt() = default;
   virtual bool Request(HWND owner,
                        const CapabilityDescriptor& capability) = 0;
+  virtual bool RequestScoped(
+      HWND owner,
+      const CapabilityDescriptor& capability,
+      const PermissionScope&) {
+    return Request(owner, capability);
+  }
 };
 
 class PermissionManager {
@@ -48,6 +63,15 @@ public:
   bool SetGranted(Capability capability, bool granted);
   bool Revoke(Capability capability);
   bool RevokeAll();
+
+  bool IsGrantedScoped(
+      Capability capability,
+      const PermissionScope& scope) const;
+  bool EnsureScoped(
+      HWND owner,
+      Capability capability,
+      const PermissionScope& scope);
+  bool RevokeTab(std::int64_t tab_id);
   std::vector<Capability> Granted() const;
 
 private:
