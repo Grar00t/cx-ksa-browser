@@ -5,15 +5,17 @@
 namespace cx::ui::design {
 
 struct Color final {
-  static constexpr COLORREF Background = RGB(30, 28, 25);
-  static constexpr COLORREF Surface = RGB(40, 37, 31);
-  static constexpr COLORREF SurfaceRaised = RGB(49, 45, 37);
-  static constexpr COLORREF Input = RGB(24, 23, 20);
-  static constexpr COLORREF Border = RGB(73, 66, 55);
-  static constexpr COLORREF Text = RGB(242, 238, 228);
-  static constexpr COLORREF MutedText = RGB(183, 173, 154);
-  static constexpr COLORREF Sand = RGB(199, 169, 107);
-  static constexpr COLORREF Olive = RGB(127, 133, 87);
+  static constexpr COLORREF Background = RGB(11, 16, 32);
+  static constexpr COLORREF Surface = RGB(18, 26, 46);
+  static constexpr COLORREF SurfaceRaised = RGB(26, 37, 64);
+  static constexpr COLORREF Input = RGB(10, 15, 28);
+  static constexpr COLORREF Border = RGB(38, 52, 79);
+  static constexpr COLORREF Text = RGB(232, 241, 255);
+  static constexpr COLORREF MutedText = RGB(159, 176, 204);
+  static constexpr COLORREF AccentTurquoise = RGB(31, 209, 198);
+  static constexpr COLORREF AccentTurquoiseDim = RGB(19, 143, 137);
+  static constexpr COLORREF AgentActive = RGB(125, 227, 255);
+  static constexpr COLORREF Danger = RGB(255, 107, 122);
 };
 
 struct Spacing final {
@@ -43,12 +45,12 @@ struct Radius final {
 
 struct Border final {
   static constexpr int Standard = 1;
-  static constexpr int Focus = 2;
+  static constexpr int Focus = 1;
 };
 
 struct Focus final {
-  static constexpr COLORREF Primary = Color::Sand;
-  static constexpr COLORREF Secondary = Color::Olive;
+  static constexpr COLORREF Primary = Color::AccentTurquoise;
+  static constexpr COLORREF Secondary = Color::AccentTurquoiseDim;
   static constexpr int TabUnderline = 2;
 };
 
