@@ -91,6 +91,8 @@ add_library(cx_browser STATIC
   src/browser/tab_manager.h
   src/browser/navigation_controller.cpp
   src/browser/navigation_controller.h
+  src/browser/webview_security_policy.cpp
+  src/browser/webview_security_policy.h
   src/browser/history_service.cpp
   src/browser/history_service.h
   src/browser/bookmark_service.cpp
@@ -216,6 +218,7 @@ add_executable(storage_tests
   tests/config_test.cpp
   tests/integration_test.cpp
   tests/security_test.cpp
+  tests/webview_security_policy_test.cpp
   tests/performance_test.cpp)
 target_link_libraries(storage_tests PRIVATE
   cx_ui
