@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <utility>
 
 namespace cx::ui {
 namespace {
@@ -87,20 +88,101 @@ AtharSound& AtharSound::Instance() {
 }
 
 AtharSound::AtharSound()
-    : wave_(BuildWave()) {}
+    : AtharSound(
+          BuildWave,
+          [](const std::vector<std::uint8_t>& wave) {
+            return PlaySoundW(
+                reinterpret_cast<LPCWSTR>(wave.data()),
+                nullptr,
+                SND_ASYNC | SND_MEMORY | SND_NODEFAULT) != FALSE;
+          },
+          []() { PlaySoundW(nullptr, nullptr, 0); }) {}
+
+AtharSound::AtharSound(
+    WaveBuilder build, WavePlayer play, PlaybackStopper stop)
+    : build_(std::move(build)),
+      play_(std::move(play)),
+      stop_(std::move(stop)) {
+  worker_ = std::thread(&AtharSound::WorkerMain, this);
+}
+
+AtharSound::~AtharSound() {
+  {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    closing_ = true;
+    pending_ = false;
+    ++generation_;
+    // Stop while the owned waveform is still valid.
+    stop_();
+  }
+  wake_.notify_all();
+  if (worker_.joinable()) {
+    worker_.join();
+  }
+}
 
 bool AtharSound::Play() {
-  if (wave_.empty()) {
-    return false;
+  {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    if (closing_) {
+      return false;
+    }
+    ++generation_;
+    pending_ = true;
   }
-  return PlaySoundW(
-      reinterpret_cast<LPCWSTR>(wave_.data()),
-      nullptr,
-      SND_ASYNC | SND_MEMORY | SND_NODEFAULT) != FALSE;
+  wake_.notify_one();
+  return true;
 }
 
 void AtharSound::Stop() {
-  PlaySoundW(nullptr, nullptr, 0);
+  const std::lock_guard<std::mutex> lock(mutex_);
+  if (closing_) {
+    return;
+  }
+  ++generation_;
+  pending_ = false;
+  // The worker holds the same lock while starting playback.
+  stop_();
+}
+
+void AtharSound::WorkerMain() {
+  for (;;) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    wake_.wait(lock, [this] {
+      return closing_ || pending_;
+    });
+    if (closing_) {
+      return;
+    }
+    const std::uint64_t request = generation_;
+    pending_ = false;
+
+    if (wave_.empty()) {
+      lock.unlock();
+      std::vector<std::uint8_t> rendered;
+      try {
+        rendered = build_();
+      } catch (...) {
+        // No audio is preferable to terminating the browser.
+      }
+      lock.lock();
+      if (closing_) {
+        return;
+      }
+      if (wave_.empty()) {
+        wave_ = std::move(rendered);
+      }
+    }
+
+    // A Stop or newer Play during synthesis invalidates this request.
+    if (closing_ || request != generation_ || wave_.empty()) {
+      continue;
+    }
+    // No other caller can stop, replace, or destroy the buffer until
+    // the asynchronous API has acquired its stable memory pointer.
+    stop_();
+    (void)play_(wave_);
+  }
 }
 
 std::vector<std::uint8_t> AtharSound::BuildWave() {

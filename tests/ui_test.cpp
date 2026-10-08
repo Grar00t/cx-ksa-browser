@@ -28,6 +28,7 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <future>
 #include <thread>
 #include <fstream>
 #include <iterator>
@@ -216,6 +217,99 @@ TEST(AtharSoundTest, GeneratesEightSecondStereoPcmWithSignal) {
     peak = (std::max)(peak, magnitude);
   }
   EXPECT_GT(peak, 2048u);
+}
+
+TEST(AtharSoundTest, PlayReturnsWithoutWaitingForRendering) {
+  std::promise<void> rendering_started;
+  auto rendering_started_future = rendering_started.get_future();
+  std::promise<void> release_rendering;
+  auto release_future = release_rendering.get_future().share();
+  cx::ui::AtharSound sound(
+      [&]() {
+        rendering_started.set_value();
+        release_future.wait();
+        return std::vector<std::uint8_t>{'R', 'I', 'F', 'F'};
+      },
+      [](const auto&) { return true; },
+      []() {});
+
+  auto requested = std::async(
+      std::launch::async, [&]() { return sound.Play(); });
+  const bool returned_while_rendering_waits =
+      requested.wait_for(std::chrono::seconds(2)) ==
+      std::future_status::ready;
+  const bool renderer_started =
+      rendering_started_future.wait_for(std::chrono::seconds(2)) ==
+      std::future_status::ready;
+  // Always release, even if the assertions fail.
+  sound.Stop();
+  release_rendering.set_value();
+  EXPECT_TRUE(returned_while_rendering_waits);
+  EXPECT_TRUE(renderer_started);
+  EXPECT_TRUE(requested.get());
+}
+
+TEST(AtharSoundTest, StopDuringSynthesisCancelsOldRequest) {
+  std::promise<void> entered;
+  auto entered_future = entered.get_future();
+  std::promise<void> release;
+  auto release_future = release.get_future().share();
+  std::atomic<int> play_count{0};
+
+  {
+    cx::ui::AtharSound sound(
+        [&]() {
+          entered.set_value();
+          release_future.wait();
+          return std::vector<std::uint8_t>{'R', 'I', 'F', 'F'};
+        },
+        [&](const auto&) {
+          ++play_count;
+          return true;
+        },
+        []() {});
+    EXPECT_TRUE(sound.Play());
+    const bool entered_renderer =
+        entered_future.wait_for(std::chrono::seconds(2)) ==
+        std::future_status::ready;
+    sound.Stop();
+    release.set_value();
+    EXPECT_TRUE(entered_renderer);
+  }
+  // Destructor joins the synthesis worker.
+  EXPECT_EQ(play_count.load(), 0);
+}
+
+TEST(AtharSoundTest, ShutdownStopsWhileWaveBufferStillExists) {
+  std::promise<void> played;
+  auto played_future = played.get_future();
+  std::atomic<const std::uint8_t*> active{nullptr};
+  std::atomic<int> stop_calls{0};
+  std::atomic<int> observed_byte{0};
+  {
+    cx::ui::AtharSound sound(
+        []() {
+          return std::vector<std::uint8_t>{'R', 'I', 'F', 'F'};
+        },
+        [&](const auto& wave) {
+          active.store(wave.data());
+          played.set_value();
+          return true;
+        },
+        [&]() {
+          ++stop_calls;
+          const auto* ptr = active.load();
+          if (ptr) {
+            observed_byte.store(*ptr);
+          }
+        });
+    EXPECT_TRUE(sound.Play());
+    EXPECT_EQ(
+        played_future.wait_for(std::chrono::seconds(2)),
+        std::future_status::ready);
+  }
+  EXPECT_GE(stop_calls.load(), 2);
+  EXPECT_EQ(observed_byte.load(), static_cast<int>('R'));
 }
 
 TEST(ContextGraphTest, CapsTabCountToKeepTheViewQuiet) {

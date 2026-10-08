@@ -93,6 +93,8 @@ int WINAPI wWinMain(
       tabs, navigation, history, bookmarks);
 
   const int result = app.Run(instance, show_command);
+  // End async memory-backed playback before application teardown.
+  cx::ui::AtharSound::Instance().Stop();
 
   const auto clear_history =
       database.GetSetting("privacy.clear_history_on_exit");
