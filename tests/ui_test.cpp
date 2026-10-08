@@ -209,7 +209,7 @@ TEST(AtharSoundTest, GeneratesEightSecondStereoPcmWithSignal) {
     const std::int16_t sample =
         static_cast<std::int16_t>(encoded);
     const std::uint16_t magnitude =
-        sample == std::numeric_limits<std::int16_t>::min()
+        sample == (std::numeric_limits<std::int16_t>::min)()
             ? 32768u
             : static_cast<std::uint16_t>(
                   sample < 0 ? -sample : sample);
