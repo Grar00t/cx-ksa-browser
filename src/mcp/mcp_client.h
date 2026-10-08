@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include <chrono>
+#include <cstdint>
 #include <string>
 #include <string_view>
 
@@ -39,7 +40,8 @@ public:
       std::string_view json_line,
       std::string* response,
       std::chrono::milliseconds timeout =
-          std::chrono::seconds(5));
+          std::chrono::seconds(5),
+      std::int64_t tab_id = 0);
 
 private:
   bool Launch(const ServerConfig& server);
