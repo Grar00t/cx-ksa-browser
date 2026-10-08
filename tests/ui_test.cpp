@@ -651,9 +651,9 @@ TEST_F(PrivacyUiTest, SettingsWindowCreatesFourPagesAndPersistsToggle) {
   ASSERT_NE(athar, nullptr);
   EXPECT_EQ(
       SendMessageW(athar, BM_GETCHECK, 0, 0),
-      BST_CHECKED);
+      BST_UNCHECKED);
   SendMessageW(
-      athar, BM_SETCHECK, BST_UNCHECKED, 0);
+      athar, BM_SETCHECK, BST_CHECKED, 0);
   SendMessageW(
       hwnd, WM_COMMAND,
       MAKEWPARAM(6050, BN_CLICKED),
@@ -661,7 +661,7 @@ TEST_F(PrivacyUiTest, SettingsWindowCreatesFourPagesAndPersistsToggle) {
   EXPECT_EQ(
       database_->GetSetting(
           cx::ui::kAtharStartupSetting).value_or(""),
-      "0");
+      "1");
 
   HWND agent_run = FindWindowExW(
       hwnd, nullptr, L"BUTTON",
