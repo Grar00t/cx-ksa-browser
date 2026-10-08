@@ -1,14 +1,18 @@
 #include "mcp/allowlist_manager.h"
 
 #include <windows.h>
+#include <bcrypt.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <cwctype>
 #include <fstream>
 #include <iterator>
+#include <iomanip>
+#include <sstream>
 #include <system_error>
 #include <utility>
 
@@ -150,12 +154,15 @@ bool ParseServer(
   bool has_id = false;
   bool has_command = false;
   bool has_args = false;
+  bool has_version = false;
+  bool has_sha256 = false;
 
   while (true) {
     SkipWhitespace(input, position);
     if (*position < input.size() && input[*position] == '}') {
       ++(*position);
-      return has_id && has_command && has_args;
+      return has_id && has_command && has_args &&
+          has_version && has_sha256;
     }
 
     std::string key;
@@ -182,6 +189,18 @@ bool ParseServer(
         return false;
       }
       has_args = true;
+    } else if (key == "version") {
+      if (has_version ||
+          !ParseString(input, position, &server->version)) {
+        return false;
+      }
+      has_version = true;
+    } else if (key == "sha256") {
+      if (has_sha256 ||
+          !ParseString(input, position, &server->sha256)) {
+        return false;
+      }
+      has_sha256 = true;
     } else {
       return false;
     }
@@ -189,7 +208,8 @@ bool ParseServer(
     SkipWhitespace(input, position);
     if (*position < input.size() && input[*position] == '}') {
       ++(*position);
-      return has_id && has_command && has_args;
+      return has_id && has_command && has_args &&
+          has_version && has_sha256;
 
     }
     if (!Consume(input, position, ',')) {
@@ -268,7 +288,7 @@ bool ParseRoot(
       std::size_t version = 0;
       if (has_version ||
           !ParseUnsigned(input, &position, &version) ||
-          version != 1) {
+          version != 2) {
         return false;
       }
       has_version = true;
@@ -363,6 +383,85 @@ bool HasExeExtension(const std::filesystem::path& path) {
       extension.begin(), extension.end(), extension.begin(),
       [](wchar_t ch) { return static_cast<wchar_t>(std::towlower(ch)); });
   return extension == L".exe";
+}
+
+
+std::string HashFileSha256(const std::filesystem::path& path) {
+  BCRYPT_ALG_HANDLE algorithm = nullptr;
+  BCRYPT_HASH_HANDLE hash = nullptr;
+  DWORD object_bytes = 0;
+  DWORD hash_bytes = 0;
+  DWORD returned = 0;
+  std::vector<unsigned char> object;
+  std::vector<unsigned char> digest;
+
+  auto close = [&]() {
+    if (hash) {
+      BCryptDestroyHash(hash);
+    }
+    if (algorithm) {
+      BCryptCloseAlgorithmProvider(algorithm, 0);
+    }
+  };
+
+  if (BCryptOpenAlgorithmProvider(
+          &algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) < 0 ||
+      BCryptGetProperty(
+          algorithm, BCRYPT_OBJECT_LENGTH,
+          reinterpret_cast<PUCHAR>(&object_bytes),
+          sizeof(object_bytes), &returned, 0) < 0 ||
+      BCryptGetProperty(
+          algorithm, BCRYPT_HASH_LENGTH,
+          reinterpret_cast<PUCHAR>(&hash_bytes),
+          sizeof(hash_bytes), &returned, 0) < 0) {
+    close();
+    return {};
+  }
+
+  object.resize(object_bytes);
+  digest.resize(hash_bytes);
+  if (BCryptCreateHash(
+          algorithm, &hash, object.data(), object_bytes,
+          nullptr, 0, 0) < 0) {
+    close();
+    return {};
+  }
+
+  std::ifstream input(path, std::ios::binary);
+  std::array<char, 64 * 1024> buffer{};
+  while (input) {
+    input.read(buffer.data(), buffer.size());
+    const auto count = input.gcount();
+    if (count > 0 &&
+        BCryptHashData(
+            hash, reinterpret_cast<PUCHAR>(buffer.data()),
+            static_cast<ULONG>(count), 0) < 0) {
+      close();
+      return {};
+    }
+  }
+  if (!input.eof() ||
+      BCryptFinishHash(
+          hash, digest.data(),
+          static_cast<ULONG>(digest.size()), 0) < 0) {
+    close();
+    return {};
+  }
+  close();
+
+  std::ostringstream output;
+  output << std::hex << std::setfill('0');
+  for (const unsigned char byte : digest) {
+    output << std::setw(2) << static_cast<unsigned>(byte);
+  }
+  return output.str();
+}
+
+bool IsSha256(std::string_view value) {
+  return value.size() == 64 &&
+      std::all_of(value.begin(), value.end(), [](unsigned char ch) {
+        return std::isdigit(ch) || (ch >= 'a' && ch <= 'f');
+      });
 }
 
 }  // namespace
@@ -462,7 +561,7 @@ bool AllowlistManager::Save() const {
     return false;
   }
 
-  output << "{\n  \"version\": 1,\n  \"servers\": [";
+  output << "{\n  \"version\": 2,\n  \"servers\": [";
   for (std::size_t i = 0; i < servers_.size(); ++i) {
     const auto& server = servers_[i];
     output << (i == 0 ? "\n" : ",\n")
@@ -470,6 +569,10 @@ bool AllowlistManager::Save() const {
            << EscapeJson(server.id)
            << "\",\"command\":\""
            << EscapeJson(server.command)
+           << "\",\"version\":\""
+           << EscapeJson(server.version)
+           << "\",\"sha256\":\""
+           << EscapeJson(server.sha256)
            << "\",\"args\":[";
     for (std::size_t j = 0; j < server.args.size(); ++j) {
       if (j != 0) {
@@ -522,6 +625,15 @@ std::vector<ServerConfig> AllowlistManager::List() const {
 }
 
 bool AllowlistManager::AddOrUpdate(ServerConfig server) {
+  const std::wstring command = Utf8ToWide(server.command);
+  const std::string digest = command.empty()
+      ? std::string{}
+      : HashFileSha256(std::filesystem::path(command));
+  if (digest.empty()) {
+    return false;
+  }
+  server.sha256 = digest;
+  server.version = "sha256:" + digest.substr(0, 16);
   if (!ValidateServer(server)) {
     return false;
   }
@@ -577,7 +689,10 @@ bool AllowlistManager::ValidateServer(const ServerConfig& server) {
   if (!IsValidId(server.id) ||
       server.command.empty() ||
       server.command.size() > 32767 ||
-      server.args.size() > 64) {
+      server.args.size() > 64 ||
+      server.version != "sha256:" +
+          server.sha256.substr(0, 16) ||
+      !IsSha256(server.sha256)) {
     return false;
   }
 
@@ -614,6 +729,17 @@ bool AllowlistManager::ValidateServer(const ServerConfig& server) {
     }
   }
   return true;
+}
+
+bool AllowlistManager::VerifyExecutableIdentity(
+    const ServerConfig& server) {
+  if (!ValidateServer(server)) {
+    return false;
+  }
+  const std::wstring command = Utf8ToWide(server.command);
+  return !command.empty() &&
+      HashFileSha256(std::filesystem::path(command)) ==
+          server.sha256;
 }
 
 }  // namespace cx::mcp
