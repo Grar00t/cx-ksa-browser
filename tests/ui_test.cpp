@@ -19,6 +19,7 @@
 #include <windows.h>
 #include <commctrl.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
