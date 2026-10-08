@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <mutex>
 #include <string>
@@ -22,6 +23,15 @@ public:
 
   bool Allow(std::string_view server_id);
   bool AllowAt(std::string_view server_id, TimePoint now);
+  bool Allow(
+      std::string_view server_id,
+      std::string_view tool_id,
+      std::int64_t tab_id);
+  bool AllowAt(
+      std::string_view server_id,
+      std::string_view tool_id,
+      std::int64_t tab_id,
+      TimePoint now);
 
   std::size_t limit() const noexcept;
   std::chrono::milliseconds window() const noexcept;
