@@ -111,10 +111,12 @@ add_library(cx_agent STATIC
   src/agent/agent_core.h
   src/agent/permissions.cpp
   src/agent/permissions.h
+  src/agent/untrusted_page_content.cpp
+  src/agent/untrusted_page_content.h
   src/agent/consent_dialog.cpp
   src/agent/consent_dialog.h)
 target_include_directories(cx_agent PUBLIC src)
-target_link_libraries(cx_agent PUBLIC cx_storage user32)
+target_link_libraries(cx_agent PUBLIC cx_storage user32 bcrypt)
 if(MSVC)
   target_compile_options(cx_agent PRIVATE /W4 /permissive- /EHsc)
 endif()
@@ -210,6 +212,7 @@ set_target_properties(browser_crash_writer PROPERTIES
 add_executable(storage_tests
   tests/storage_test.cpp
   tests/agent_test.cpp
+  tests/untrusted_page_content_test.cpp
   tests/mcp_test.cpp
   tests/browser_test.cpp
   tests/ui_test.cpp
