@@ -138,7 +138,7 @@ void PaintTabControl(HWND tabs, HDC dc) noexcept {
       accent.top =
           accent.bottom - design::Focus::TabUnderline;
       HBRUSH accent_brush =
-          CreateSolidBrush(Palette::Sand);
+          CreateSolidBrush(Palette::AccentTurquoise);
       FillRect(dc, &accent, accent_brush);
       DeleteObject(accent_brush);
     }
