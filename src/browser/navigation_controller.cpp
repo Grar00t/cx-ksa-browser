@@ -83,6 +83,57 @@ std::string WideToUtf8(std::wstring_view value) {
   return output;
 }
 
+
+bool ContainsWhitespace(std::wstring_view value) {
+  return std::any_of(
+      value.begin(), value.end(),
+      [](wchar_t ch) { return std::iswspace(ch) != 0; });
+}
+
+std::string EncodeSearchQuery(std::wstring_view value) {
+  const std::string utf8 = WideToUtf8(value);
+  if (utf8.empty()) {
+    return {};
+  }
+  constexpr char kHex[] = "0123456789ABCDEF";
+  std::string encoded;
+  encoded.reserve(utf8.size() * 3);
+  for (const unsigned char ch : utf8) {
+    if ((ch >= 'a' && ch <= 'z') ||
+        (ch >= 'A' && ch <= 'Z') ||
+        (ch >= '0' && ch <= '9') ||
+        ch == '-' || ch == '_' || ch == '.' || ch == '~') {
+      encoded.push_back(static_cast<char>(ch));
+    } else if (ch == ' ') {
+      encoded.push_back('+');
+    } else {
+      encoded.push_back('%');
+      encoded.push_back(kHex[ch >> 4]);
+      encoded.push_back(kHex[ch & 0x0F]);
+    }
+  }
+  return encoded;
+}
+
+std::optional<std::string> SearchUrl(std::wstring_view query) {
+  std::string_view base = "https://duckduckgo.com/?q=";
+  if (query.starts_with(L"!g ")) {
+    base = "https://www.google.com/search?q=";
+    query.remove_prefix(3);
+  } else if (query.starts_with(L"!b ")) {
+    base = "https://www.bing.com/search?q=";
+    query.remove_prefix(3);
+  } else if (query.starts_with(L"!d ")) {
+    query.remove_prefix(3);
+  }
+
+  const std::string encoded = EncodeSearchQuery(query);
+  if (encoded.empty()) {
+    return std::nullopt;
+  }
+  return std::string(base) + encoded;
+}
+
 }  // namespace
 
 NavigationController::NavigationController(
@@ -438,49 +489,53 @@ NavigationController::NormalizeAddress(
     return std::nullopt;
   }
 
-  std::wstring value(
-      input.substr(first, last - first));
+  std::wstring value(input.substr(first, last - first));
   for (const wchar_t ch : value) {
     if (ch < 0x20) {
       return std::nullopt;
     }
   }
 
-  if (!IsAllowedUrl(value)) {
-    const auto colon = value.find(L':');
-    if (colon != std::wstring::npos) {
-      const auto slash = value.find(L'/');
-      const auto port_end =
-          slash == std::wstring::npos
-              ? value.size()
-              : slash;
-      const bool numeric_port =
-          colon > 0 &&
-          colon + 1 < port_end &&
-          std::all_of(
-              value.begin() +
-                  static_cast<std::ptrdiff_t>(colon + 1),
-              value.begin() +
-                  static_cast<std::ptrdiff_t>(port_end),
-              [](wchar_t ch) {
-                return std::iswdigit(ch) != 0;
-              });
-      if (!numeric_port) {
-        return std::nullopt;
-      }
-    }
-    value = L"https://" + value;
+  if (IsAllowedUrl(value)) {
+    const std::string utf8 = WideToUtf8(value);
+    return utf8.empty()
+        ? std::nullopt
+        : std::optional<std::string>(utf8);
   }
 
+  const auto colon = value.find(L':');
+  if (colon != std::wstring::npos) {
+    const auto slash = value.find(L'/');
+    const auto port_end =
+        slash == std::wstring::npos ? value.size() : slash;
+    const bool numeric_port =
+        colon > 0 && colon + 1 < port_end &&
+        std::all_of(
+            value.begin() +
+                static_cast<std::ptrdiff_t>(colon + 1),
+            value.begin() +
+                static_cast<std::ptrdiff_t>(port_end),
+            [](wchar_t ch) {
+              return std::iswdigit(ch) != 0;
+            });
+    if (!numeric_port) {
+      return std::nullopt;
+    }
+  }
+
+  if (ContainsWhitespace(value)) {
+    return SearchUrl(value);
+  }
+
+  value = L"https://" + value;
   if (!IsAllowedUrl(value)) {
     return std::nullopt;
   }
 
   const std::string utf8 = WideToUtf8(value);
-  if (utf8.empty()) {
-    return std::nullopt;
-  }
-  return utf8;
+  return utf8.empty()
+      ? std::nullopt
+      : std::optional<std::string>(utf8);
 }
 
 bool NavigationController::IsAllowedUrl(
