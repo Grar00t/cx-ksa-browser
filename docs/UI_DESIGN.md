@@ -2,34 +2,53 @@
 
 ## Direction
 
-CX Build uses **Najdi utility minimalism**: compact, high-contrast Windows UI that feels local, deliberate, and engineered rather than decorative.
+CX Build uses **Najdi utility minimalism** with an original deep-space and turquoise palette: compact, high-contrast Windows UI that feels local, deliberate, and engineered rather than decorative.
 
 The design is original to CX Build. It must not copy Comet, Perplexity, Chromium-fork assets, logos, proprietary bundles, or private UI source.
 
 ## Palette
 
-The central design tokens are defined in `src/ui/design_tokens.h`. `src/ui/najdi_theme.{h,cpp}` consumes those tokens for native Win32 painting and behavior.
+The central design tokens are defined in `src/ui/design_tokens.h`. `src/ui/najdi_theme.{h,cpp}` consumes those tokens for native Win32 painting and behavior. The palette and component treatment were created for CX Build; no third-party source, asset, icon, logo, string, proprietary bundle, or pixel-exact layout was imported or imitated.
 
-| Token | RGB | Hex | Role |
-| --- | --- | --- | --- |
-| Background | 30, 28, 25 | `#1E1C19` | warm charcoal base |
-| Surface | 40, 37, 31 | `#28251F` | controls and inactive tabs |
-| Surface Raised | 49, 45, 37 | `#312D25` | pressed/active surfaces |
-| Input | 24, 23, 20 | `#181714` | address and list fields |
-| Border | 73, 66, 55 | `#494237` | quiet structure |
-| Text | 242, 238, 228 | `#F2EEE4` | primary high-contrast text |
-| Muted Text | 183, 173, 154 | `#B7AD9A` | secondary labels |
-| Sand | 199, 169, 107 | `#C7A96B` | active/focus accent |
-| Olive | 127, 133, 87 | `#7F8557` | reserved secondary accent |
+| Token | Hex | Role |
+| --- | --- | --- |
+| Background | `#0B1020` | deep-space base |
+| Surface | `#121A2E` | controls and inactive tabs |
+| Surface Raised | `#1A2540` | active and pressed surfaces |
+| Input | `#0A0F1C` | address bar and fields |
+| Border | `#26344F` | quiet structure |
+| Text | `#E8F1FF` | primary text |
+| Muted Text | `#9FB0CC` | secondary text |
+| Accent Turquoise | `#1FD1C6` | focus, active tab, primary action |
+| Accent Turquoise Dim | `#138F89` | hover and secondary accent |
+| Agent Active | `#7DE3FF` | agent-is-acting indicator |
+| Danger | `#FF6B7A` | blocked, deny, and kill-switch state |
+
+## WCAG contrast
+
+Ratios use WCAG 2.x relative luminance from the exact sRGB token values. `DesignSystemTest.BodyTextMeetsWcagAaAcrossSurfaces` computes the same matrix and requires at least 4.5:1.
+
+| Foreground | Background | Ratio |
+| --- | --- | ---: |
+| Text | Background | 16.64:1 |
+| Text | Surface | 15.22:1 |
+| Text | Surface Raised | 13.35:1 |
+| Text | Input | 16.81:1 |
+| Muted Text | Background | 8.62:1 |
+| Muted Text | Surface | 7.88:1 |
+| Muted Text | Surface Raised | 6.91:1 |
+| Muted Text | Input | 8.70:1 |
+
+Accent Turquoise, Agent Active, and Danger also remain at or above 4.5:1 on all four surfaces. Accent Turquoise Dim is a non-text hover/border token and must not be used for body text.
 
 ## Token system
 
 `src/ui/design_tokens.h` is the single source for:
-- color: warm charcoal surfaces, high-contrast text, sand/olive accents
+- color: deep-space surfaces, high-contrast text, turquoise accents, and explicit agent/danger state tokens
 - spacing: 2/4/6/8/12/16/24 px compact scale
 - typography: Unicode Segoe UI body/semibold metrics
 - radius: control 3 px, surface 4 px, hard maximum 4 px
-- border: 1 px standard border and explicit focus treatment
+- border: 1 px standard border and 1 px turquoise focus treatment
 - focus: sand focus and olive primary-action accent
 - density: compact control, tab, toolbar, input and settings metrics
 - window/settings layout metrics used by the main browser and Settings UI
@@ -50,12 +69,12 @@ The central design tokens are defined in `src/ui/design_tokens.h`. `src/ui/najdi
 
 The first implemented slice themes the main browser chrome and Settings & Privacy window with:
 - dark native title bars where supported by Windows DWM
-- warm-charcoal window and tab surfaces
-- sand active-tab/focus accents
+- deep-space window and tab surfaces
+- turquoise active-tab/focus accents
 - compact owner-drawn browser and settings push buttons
 - high-contrast input/list backgrounds with tokenized 1 px borders
 - rounded controls capped at 4 px radius
-- sand focus indication and olive primary-action border treatment
+- turquoise focus indication and dim-turquoise primary-action border treatment
 - shared Unicode UI font handling and an RTL/LTR layout-direction hook
 - tokenized compact spacing/density in browser chrome and Settings layout
 
