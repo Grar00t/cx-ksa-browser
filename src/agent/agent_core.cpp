@@ -128,7 +128,7 @@ bool ParseAuditLine(
     return false;
   }
 
-  *payload = std::string(line.substr(0, tabs[3]));
+  *payload = std::string(line.substr(0, tabs[2]));
   *previous = std::string(
       line.substr(tabs[2] + 1, tabs[3] - tabs[2] - 1));
   *hash = std::string(line.substr(tabs[3] + 1));
