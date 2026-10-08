@@ -4,11 +4,11 @@
 
 Installed mode launches CX Build from the Start Menu or cx.exe. Portable mode must be started through run_portable.bat so APPDATA and LOCALAPPDATA are redirected into the portable folder.
 
-The browser opens with a tab strip, address field, navigation controls, bookmark control, and Browser and Agent menus.
+The browser opens directly on the WebView canvas with a tab strip, searchable address field, compact navigation controls, and a tools menu. Agent and context-graph drawers are closed until the user opens them.
 
 ## 2. Navigation and tabs
 
-Use New Tab to create a tab. CX persists tab state immediately in local SQLite when session restore is enabled. The address field accepts HTTP and HTTPS destinations and normalizes normal host names to HTTPS. Unsafe schemes such as javascript are rejected by the navigation controller.
+Use New Tab to create a local new-tab page. CX persists tab state immediately in local SQLite when session restore is enabled. The address field accepts HTTP and HTTPS destinations, normalizes host names to HTTPS, and sends multi-word searches to DuckDuckGo only after the user submits them. Prefix a query with `!g ` for Google, `!b ` for Bing, or `!d ` for DuckDuckGo. Unsafe schemes such as javascript are rejected by the navigation controller.
 
 Back, Forward, Reload, New Tab, Close Tab, History, and Bookmarks operate on local browser state. More than ten logical tabs and abrupt-session restoration are covered by automated tests.
 
@@ -16,11 +16,11 @@ Back, Forward, Reload, New Tab, Close Tab, History, and Bookmarks operate on loc
 
 History and bookmarks are local database records. History saving is disabled by default unless the user enables it. Bookmarks are unique by URL and persist locally.
 
-Use Browser > History or Browser > Bookmarks to inspect the local collections.
+Use the tools menu in the browser toolbar to open History or Bookmarks.
 
 ## 4. Settings and Privacy
 
-Open Browser > Settings & Privacy.
+Open Settings & Privacy from the tools menu.
 
 The window contains four pages:
 - Privacy & Security
